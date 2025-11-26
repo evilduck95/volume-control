@@ -20,7 +20,7 @@ class DelayedAction:
         while True:
             if self._killed:
                 return
-            time.sleep(.5)
+            time.sleep(.1)
             if time.time() - self._start_time >= self._min_delay:
                 self._action()
                 self._running = False
