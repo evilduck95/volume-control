@@ -3,7 +3,8 @@ import sys
 import threading
 import time
 
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QIcon, QAction
+from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from pynput import keyboard, mouse
 
 import ui
@@ -17,9 +18,11 @@ modifier_key = keyboard.Key.ctrl
 modifier_key_pressed = False
 terminate_application = False
 
-# GUI
+# GUI Setup
 gui_app = QApplication(sys.argv)
+gui_app.setQuitOnLastWindowClosed(False)
 volume_bar = ui.VolumeBar(2)
+options_menu = ui.OptionsWindow()
 
 
 def on_key_pressed(key):
@@ -92,6 +95,22 @@ def start_input_listeners():
 
 
 threading.Thread(target=start_input_listeners).start()
+
+tray = QSystemTrayIcon()
+tray_icon = QIcon("volume.png")
+tray.setIcon(tray_icon)
+tray.setVisible(True)
+
+menu = QMenu()
+open_action = QAction("Open")
+open_action.triggered.connect(options_menu.show)
+menu.addAction(open_action)
+
+quit_action = QAction("Quit")
+quit_action.triggered.connect(gui_app.quit)
+menu.addAction(quit_action)
+
+tray.setContextMenu(menu)
 
 
 gui_app.exec()
