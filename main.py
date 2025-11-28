@@ -14,7 +14,7 @@ import volumeutils
 idle_time = 3
 
 # Configs, flags and trackers
-modifier_key = keyboard.Key.ctrl
+modifier_key = keyboard.Key.shift
 modifier_key_pressed = False
 terminate_application = False
 
@@ -112,5 +112,6 @@ menu.addAction(quit_action)
 
 tray.setContextMenu(menu)
 
+options_menu.show()
 
 gui_app.exec()

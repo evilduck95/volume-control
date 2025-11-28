@@ -1,10 +1,9 @@
-import random
 import threading
 import time
 
 import screeninfo
 from PyQt6.QtCore import Qt, QRect
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QMainWindow, QPushButton, QProgressBar, QLabel
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QProgressBar, QLabel, QSlider, QFormLayout
 
 PROGRESS_BAR_STYLE = """
 QProgressBar {
@@ -58,20 +57,41 @@ class VolumeBar(QWidget):
                      round(monitor.y + monitor.height / 2 - bar_height / 2), bar_width, bar_height)
 
 
-class OptionsWindow(QMainWindow):
+class VolumeTickSelector(QWidget):
+
+    def __init__(self, starting_value=10):
+        super().__init__()
+        layout = QFormLayout()
+        self.slider_value_label = QLabel(f'Volume Change Interval: {starting_value}')
+        layout.addRow(self.slider_value_label)
+
+        self.slider = QSlider(Qt.Orientation.Horizontal)
+        self.slider.setTickPosition(QSlider.TickPosition.TicksAbove)
+        self.slider.setRange(1, 100)
+        self.slider.setValue(starting_value)
+        self.slider.setSingleStep(1)
+        self.slider.valueChanged.connect(self.update_value)
+
+        layout.addRow(self.slider)
+        self.setLayout(layout)
+
+    def update_value(self, value):
+        self.slider_value_label.setText(f'Volume Change Interval: {value}')
+
+
+class KeybindSetter(QWidget):
 
     def __init__(self):
         super().__init__()
-        self.w = VolumeBar(2)
-        self.w.hide()
-        self.button = QPushButton("Trick or Treat!")
-        self.button.clicked.connect(self.show_new_window)
-        self.setCentralWidget(self.button)
+        layout = QFormLayout()
 
-    def show_new_window(self):
-        self.w.set_percentage(random.randint(0, 100))
 
-# app = QApplication(sys.argv)
-# w = OptionsWindow()
-# w.show()
-# app.exec()
+class OptionsWindow(QWidget):
+
+    def __init__(self):
+        super().__init__()
+        self.setAutoFillBackground(False)
+        layout = QFormLayout()
+        self.volume_tick_selector = VolumeTickSelector()
+        layout.addRow(self.volume_tick_selector)
+        self.setLayout(layout)
