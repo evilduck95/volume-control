@@ -2,8 +2,11 @@ import threading
 import time
 
 import screeninfo
-from PyQt6.QtCore import Qt, QRect
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QProgressBar, QLabel, QSlider, QFormLayout
+from PyQt6.QtCore import Qt, QRect, pyqtSignal, QThread
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QProgressBar, QLabel, QSlider, QFormLayout, QLineEdit
+from pynput.keyboard import KeyCode, Key
+
+from keybindhandlers import KeybindCollector
 
 PROGRESS_BAR_STYLE = """
 QProgressBar {
@@ -79,11 +82,55 @@ class VolumeTickSelector(QWidget):
         self.slider_value_label.setText(f'Volume Change Interval: {value}')
 
 
+class ClickableLineEdit(QLineEdit):
+    clicked = pyqtSignal()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        else:
+            super().mousePressEvent(event)
+
+
+class UserKeybindInputThread(QThread):
+    keybind_changed = pyqtSignal(str)
+
+    def __init__(self):
+        QThread.__init__(self)
+
+    def _get_key_name(self, key: Key | KeyCode):
+        name = key.name if hasattr(key, 'name') else key.char
+        return name.capitalize()
+
+    def run(self):
+        collector = KeybindCollector()
+        keybind = collector.collect_keybind()
+        print(f'Collected: {keybind}')
+        collector.save_keybind('keybind')
+        keybind_string = '+'.join([self._get_key_name(key) for key in keybind])
+        self.keybind_changed.emit(keybind_string)
+
+
 class KeybindSetter(QWidget):
 
     def __init__(self):
         super().__init__()
         layout = QFormLayout()
+        self.keybind_input = ClickableLineEdit('Click to set')
+        self.keybind_input.resize(250, 40)
+        self.keybind_input.clicked.connect(self._clicked)
+        layout.addRow(self.keybind_input)
+        self.setLayout(layout)
+
+    def _update_keybind_text(self, text):
+        self.keybind_input.setText(text)
+
+    def _clicked(self):
+        self.keybind_input.setText('Press keybind...')
+        # threading.Thread(target=self._collect_keybind_from_user).start()
+        self.keybind_collector = UserKeybindInputThread()
+        self.keybind_collector.keybind_changed.connect(self._update_keybind_text)
+        self.keybind_collector.start()
 
 
 class OptionsWindow(QWidget):
@@ -94,4 +141,6 @@ class OptionsWindow(QWidget):
         layout = QFormLayout()
         self.volume_tick_selector = VolumeTickSelector()
         layout.addRow(self.volume_tick_selector)
+        self.keybind_input = KeybindSetter()
+        layout.addRow(self.keybind_input)
         self.setLayout(layout)
