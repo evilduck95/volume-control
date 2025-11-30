@@ -1,8 +1,9 @@
 import time
-from typing import MutableSet
+from enum import Enum
 
-from pynput import keyboard
+from pynput import keyboard, mouse
 from pynput.keyboard import KeyCode, Key
+from pynput.mouse import Button
 
 from customthreading import ReturningThread
 
@@ -24,6 +25,33 @@ MODIFIER_KEYS = (
 )
 
 noop = lambda *a, **k: None
+
+
+class ScrollAction(Enum):
+    UP = '<ScrollUp>'
+    DOWN = '<ScrollDown>'
+
+
+class Binding:
+
+    def __init__(self, modifiers: set[Key | KeyCode],
+                 bound_key: [Key | KeyCode | None],
+                 bound_scroll: [ScrollAction | None]):
+        self.__modifiers = modifiers
+        self.__bound_key = bound_key
+        self.__bound_scroll = bound_scroll
+
+    @property
+    def modifiers(self):
+        return self.__modifiers
+
+    @property
+    def bound_key(self):
+        return self.__bound_key
+
+    @property
+    def bound_scroll(self) -> ScrollAction:
+        return self.__bound_scroll
 
 
 class KeybindListener:
@@ -54,54 +82,89 @@ class KeybindListener:
             suppress=False).start()
 
 
-# Need to rewrite this to only allow canonical keys to be pressed, remove all modifiers
 # With thanks to:
 # https://medium.com/@birenmer/threading-the-needle-returning-values-from-python-threads-with-ease-ace21193c148
 class KeybindCollector:
 
     def __init__(self):
-        self.keybind = set()
+        self.keybind_modifiers = set()
+        self.bound_key: Key | KeyCode = None
+        self.bound_scroll: ScrollAction = None
         self.keybind_complete = False
+        self.keyboard_listener = keyboard.Listener(
+            on_press=self._for_canonical(self._on_press),
+            on_release=self._for_canonical(self._on_release),
+            suppress=False
+        )
+        self.mouse_listener = mouse.Listener(on_click=self._on_mouse_press, on_scroll=self._on_mouse_scroll)
+
+    # Func looked cute, might delete later
+    def _valid_key(self, key: Key | KeyCode):
+        return (hasattr(key, 'name') and key.name is not None) or (hasattr(key, 'char') and key.char is not None)
+
+    def _on_mouse_press(self, _x, _y, button: Button, pressed):
+        # Stops any rogue mouse release from triggering end of capture
+        if pressed:
+            self.bound_key = button
+            self.keybind_complete = True
+
+    def _on_mouse_scroll(self, _x, _y, _dx, dy):
+        # We must have some modifiers so scrolling alone won't be bound
+        if len(self.keybind_modifiers) == 0:
+            return
+        if dy < 0:
+            self.bound_scroll = ScrollAction.DOWN
+        else:
+            self.bound_scroll = ScrollAction.UP
+        # Scrolling is a final action like a key or mouse press
+        self.keybind_complete = True
 
     def _on_press(self, key: Key | KeyCode):
         print(f'Press: {key}')
         if not self.keybind_complete:
             if key in MODIFIER_KEYS:
-                self.keybind.add(key)
+                self.keybind_modifiers.add(key)
             else:
-                self.keybind.add(key)
+                self.bound_key = key
                 self.keybind_complete = True
 
     def _on_release(self, key: Key | KeyCode):
         print(f'Release: {key}')
-        self.keybind.discard(key)
+        self.keybind_modifiers.discard(key)
 
-    def _listen_for_keybind(self):
-        listener = keyboard.Listener(on_press=self._on_press, on_release=self._on_release, suppress=True)
-        listener.start()
+    def _for_canonical(self, func):
+        return lambda key: func(self.keyboard_listener.canonical(key))
+
+    def _listen_for_bind(self) -> Binding:
+        self.keyboard_listener.start()
+        self.mouse_listener.start()
         while not self.keybind_complete:
             time.sleep(.01)
             pass
-        listener.stop()
-        return self.keybind
+        self.keyboard_listener.stop()
+        binding = Binding(self.keybind_modifiers, self.bound_key, self.bound_scroll)
+        return binding
 
     def _get_vk(self, key: Key | KeyCode):
         return key.vk if hasattr(key, 'vk') else key.value.vk
 
-    def collect_keybind(self) -> MutableSet[Key | KeyCode]:
+    def collect_keybind(self) -> Binding:
         """
         Thread Blocking call that returns the user-specified keybind once they have provided one
         :return: A set of Keys specifying a keybind (e.g. {'G', <Key.shift: <65505>>, <Key.ctrl: <65507>>})
         """
-        keybind_collection_thread = ReturningThread(target=self._listen_for_keybind)
-        keybind_collection_thread.start()
-        return keybind_collection_thread.join()
+        bind_collection_thread = ReturningThread(target=self._listen_for_bind)
+        bind_collection_thread.start()
+        return bind_collection_thread.join()
 
     def save_keybind(self, filename: str):
         with open(filename, mode="wt") as file:
-            for key in self.keybind:
+            for key in self.keybind_modifiers:
                 file.write(str(self._get_vk(key)) + '\n')
-
+            if self.bound_key is not None:
+                file.write(str(self._get_vk(self.bound_key)))
+            elif self.bound_scroll is not None:
+                file.write(str(self.bound_scroll.value))
 
 # collector = KeybindCollector()
 # keybind = collector.collect_keybind()

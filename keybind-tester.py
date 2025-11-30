@@ -1,25 +1,32 @@
-from pynput import keyboard
-from pynput.keyboard import Key, KeyCode
+from pynput.keyboard import Key, Listener
+import sys
 
+print("\nPress Esc to exit\n")
+print(f'{"form":<10}{"char":<10}{"val":>4}{"code":>8}')
+print(f'{"----":<10}{"----":<10}{"---":>4}{"----":>8}')
 
-pressed_vks = set()
+lastkey = ""
+def on_press(key):
+    global lastkey
+    if hasattr(key, 'char'):
+        form = "char"
+        char = key.char
+        if char is None:
+            char = val = ""
+        else:
+            val = ord(char)
+        code = key.vk
+        lastkey = ""
+    else:
+        form = "other"
+        char = key.name
+        val = ""
+        code = key.value.vk
+    if lastkey != key:
+        print(f"{form:<10}{char:<10}{val:>4}{code:>8}")
+    lastkey = key
+    if key == Key.esc:
+        sys.exit()
 
-
-def get_vk(key: Key | KeyCode):
-    return key.vk if hasattr(key, 'vk') else key.value.vk
-
-
-def on_press(key: Key | KeyCode):
-    vk = get_vk(key)
-    pressed_vks.add(vk)
-    print(str(pressed_vks))
-
-
-def on_release(key: Key | KeyCode):
-    vk = get_vk(key)
-    pressed_vks.remove(vk)
-    print(str(pressed_vks))
-
-
-with keyboard.Listener(on_press=on_press, on_release=on_release) as listener:
+with Listener(on_press=on_press, suppress=True) as listener:
     listener.join()
