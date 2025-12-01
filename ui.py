@@ -98,8 +98,13 @@ class UserKeybindInputThread(QThread):
     def __init__(self):
         QThread.__init__(self)
 
+    def _get_vk(self, key: Key | KeyCode):
+        return key.vk if hasattr(key, 'vk') else key.value.vk
+
     def _get_key_name(self, key: Key | KeyCode):
         name = key.name if hasattr(key, 'name') else key.char
+        if name is None:
+            return self._get_vk(key)
         return name.capitalize()
 
     def run(self):
@@ -110,7 +115,8 @@ class UserKeybindInputThread(QThread):
         bound_scroll = binding.bound_scroll
         print(f'Modifier: {modifier_keys}, Key: {bound_key}, Scroll: {bound_scroll}')
         collector.save_keybind('keybind')
-        keybind_string = ' + '.join([self._get_key_name(key) for key in modifier_keys]) + f' + {self._get_key_name(bound_key) if bound_scroll is None else bound_scroll.value}'
+        keybind_string = ' + '.join([self._get_key_name(key) for key in
+                                     modifier_keys]) + f' + {self._get_key_name(bound_key) if bound_scroll is None else bound_scroll.value}'
         self.keybind_changed.emit(keybind_string)
 
 

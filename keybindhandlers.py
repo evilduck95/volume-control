@@ -18,9 +18,9 @@ MODIFIER_KEYS = (
     Key.alt_l,
     Key.alt_r,
     Key.alt,
-    # Key.cmd_l,
-    # Key.cmd_r,
-    # Key.cmd,
+    Key.cmd_l,
+    Key.cmd_r,
+    Key.cmd,
     Key.menu
 )
 
@@ -30,6 +30,13 @@ noop = lambda *a, **k: None
 class ScrollAction(Enum):
     UP = '<ScrollUp>'
     DOWN = '<ScrollDown>'
+
+    @staticmethod
+    def for_value(value):
+        if value == ScrollAction.UP.value:
+            return ScrollAction.UP
+        else:
+            return ScrollAction.DOWN
 
 
 class Binding:
@@ -52,6 +59,41 @@ class Binding:
     @property
     def bound_scroll(self) -> ScrollAction:
         return self.__bound_scroll
+
+
+class KeybindLoader:
+
+    def __init__(self, filename: str):
+        self.__modifiers = []
+        self.__key = None
+        with open(filename, 'rt') as file:
+            section = ''
+            for line in file:
+                value = line.replace('\n', '').strip()
+                if value in ('modifiers', 'key', 'scroll'):
+                    section = value
+                else:
+                    if section == 'modifiers':
+                        self.__modifiers.append(value)
+                    elif section == 'key':
+                        self.__key = value
+                    elif section == 'scroll':
+                        self.__scroll = ScrollAction.for_value(value)
+
+    def has_key(self) -> bool:
+        return self.__key is not None
+
+    @property
+    def modifiers(self):
+        return self.__modifiers
+
+    @property
+    def key(self):
+        return self.__key
+
+    @property
+    def scroll(self):
+        return self.__scroll
 
 
 class KeybindListener:
@@ -92,8 +134,8 @@ class KeybindCollector:
         self.bound_scroll: ScrollAction = None
         self.keybind_complete = False
         self.keyboard_listener = keyboard.Listener(
-            on_press=self._for_canonical(self._on_press),
-            on_release=self._for_canonical(self._on_release),
+            on_press=self._on_press,
+            on_release=self._on_release,
             suppress=False
         )
         self.mouse_listener = mouse.Listener(on_click=self._on_mouse_press, on_scroll=self._on_mouse_scroll)
@@ -148,6 +190,14 @@ class KeybindCollector:
     def _get_vk(self, key: Key | KeyCode):
         return key.vk if hasattr(key, 'vk') else key.value.vk
 
+    def _get_key_name(self, key: Key | KeyCode):
+        name = key.name if hasattr(key, 'name') else key.char
+        return name.capitalize()
+
+    def _stringify_key(self, key: Key | KeyCode):
+        vk = self._get_vk(key)
+        return self._get_key_name(key) if vk is None else vk
+
     def collect_keybind(self) -> Binding:
         """
         Thread Blocking call that returns the user-specified keybind once they have provided one
@@ -159,12 +209,24 @@ class KeybindCollector:
 
     def save_keybind(self, filename: str):
         with open(filename, mode="wt") as file:
+            file.write('modifiers\n')
             for key in self.keybind_modifiers:
-                file.write(str(self._get_vk(key)) + '\n')
+                file.write(str(self._stringify_key(key)) + '\n')
             if self.bound_key is not None:
-                file.write(str(self._get_vk(self.bound_key)))
+                file.write('key\n')
+                file.write(str(self._stringify_key(self.bound_key)))
             elif self.bound_scroll is not None:
+                file.write('scroll\n')
                 file.write(str(self.bound_scroll.value))
+
+
+loader = KeybindLoader('keybind')
+
+print(f'modifiers: {loader.modifiers}')
+if loader.has_key():
+    print(f'key: {loader.key}')
+else:
+    print(f'scroll: {loader.scroll}')
 
 # collector = KeybindCollector()
 # keybind = collector.collect_keybind()
