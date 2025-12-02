@@ -97,7 +97,7 @@ def start_input_listeners():
 threading.Thread(target=start_input_listeners).start()
 
 tray = QSystemTrayIcon()
-tray_icon = QIcon("volume.png")
+tray_icon = QIcon("volume_white.png")
 tray.setIcon(tray_icon)
 tray.setVisible(True)
 

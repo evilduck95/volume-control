@@ -114,7 +114,7 @@ class UserKeybindInputThread(QThread):
         bound_key = binding.bound_key
         bound_scroll = binding.bound_scroll
         print(f'Modifier: {modifier_keys}, Key: {bound_key}, Scroll: {bound_scroll}')
-        collector.save_keybind('keybind')
+        collector.save_keybind('keybind.kbd')
         keybind_string = ' + '.join([self._get_key_name(key) for key in
                                      modifier_keys]) + f' + {self._get_key_name(bound_key) if bound_scroll is None else bound_scroll.value}'
         self.keybind_changed.emit(keybind_string)
