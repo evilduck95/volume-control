@@ -36,6 +36,16 @@ def _convert_to_vks(keys: Iterable[Key | KeyCode]):
     return set([_get_vk(key) for key in keys])
 
 
+def _get_key_name(key: Key | KeyCode):
+    name = key.name if hasattr(key, 'name') else key.char
+    return name.capitalize()
+
+
+def _stringify_key(key: Key | KeyCode):
+    vk = _get_vk(key)
+    return _get_key_name(key) if vk is None else vk
+
+
 class ScrollAction(Enum):
     UP = '<ScrollUp>'
     DOWN = '<ScrollDown>'
@@ -54,20 +64,31 @@ class Binding:
     def __init__(self, modifier_keys: set[Key | KeyCode],
                  bound_key: [Key | KeyCode | None],
                  bound_scroll: [ScrollAction] = ScrollAction.NONE):
+        # Raw Keys
+        self.__modifier_keys: set[Key | KeyCode] = modifier_keys
+        self.__bound_key: [Key | KeyCode] = bound_key
+
+        # Key Codes only for logic
         self.__modifier_codes: set[int] = _convert_to_vks(modifier_keys)
         self.__bound_key_code: int = _get_vk(bound_key) if bound_key is not None else None
+
+        # Scroll Value
         self.__bound_scroll: ScrollAction = bound_scroll
 
     def is_activated(self, keys_pressed: set[Key | KeyCode], scroll_action=None):
+        # Check if all of our wanted modifiers are a part of the set of pressed keys
         pressed_codes = _convert_to_vks(keys_pressed)
         modifiers_pressed = self.__modifier_codes.issubset(pressed_codes)
-        scroll_based_binding = self.__bound_scroll is not None
+        # Check if we're using a mouse scroll wheel based bind
         action_binding_pressed: bool
-        if scroll_based_binding:
+        if self.is_scroll_based():
             action_binding_pressed = scroll_action == self.__bound_scroll
         else:
             action_binding_pressed = self.__bound_key_code in pressed_codes
         return modifiers_pressed and action_binding_pressed
+
+    def is_scroll_based(self):
+        return self.__bound_scroll is not None
 
     @property
     def modifiers(self) -> set[int]:
@@ -82,6 +103,8 @@ class Binding:
         return self.__bound_scroll
 
 
+# TODO: Reads the file ok right now.
+#  Feels a bit raw atm and could probably do with some centralised ruling
 def load_keybind_from_file(filename: str):
     modifiers: set[KeyCode] = set()
     key: [KeyCode | None] = None
@@ -111,11 +134,9 @@ class KeybindListener:
     def __init__(self, binding: Binding, callback=noop):
         self.binding = binding
         self.keys_pressed: set[Key | KeyCode] = set()
-        self.bound_modifiers: set[int] = binding.modifiers
-        self.bound_key: int = binding.bound_key
-        self.bound_scroll: ScrollAction = binding.bound_scroll
         self.callback = callback
 
+    # Callback if our binding is satisfied
     def _check_keybind(self, scroll=None):
         if self.binding.is_activated(self.keys_pressed, scroll):
             self.callback()
@@ -137,9 +158,11 @@ class KeybindListener:
             on_press=self._key_pressed,
             on_release=self._key_released,
             suppress=True).start()
-        mouse.Listener(
-            on_scroll=self._mouse_scrolled
-        ).start()
+        # Only listen for mouse events if we bound a scroll action
+        if self.binding.is_scroll_based():
+            mouse.Listener(
+                on_scroll=self._mouse_scrolled
+            ).start()
 
 
 # With thanks to:
@@ -159,10 +182,6 @@ class KeybindCollector:
             suppress=True
         )
         self.mouse_listener = mouse.Listener(on_click=self._on_mouse_press, on_scroll=self._on_mouse_scroll)
-
-    # Func looked cute, might delete later
-    def _valid_key(self, key: Key | KeyCode):
-        return (hasattr(key, 'name') and key.name is not None) or (hasattr(key, 'char') and key.char is not None)
 
     def _on_mouse_press(self, _x, _y, button: Button, pressed):
         # Stops any rogue mouse release from triggering end of capture
@@ -207,14 +226,6 @@ class KeybindCollector:
         binding = Binding(self.keybind_modifiers, self.bound_key, self.bound_scroll)
         return binding
 
-    def _get_key_name(self, key: Key | KeyCode):
-        name = key.name if hasattr(key, 'name') else key.char
-        return name.capitalize()
-
-    def _stringify_key(self, key: Key | KeyCode):
-        vk = _get_vk(key)
-        return self._get_key_name(key) if vk is None else vk
-
     def collect_keybind(self) -> Binding:
         """
         Thread Blocking call that returns the user-specified keybind once they have provided one
@@ -228,10 +239,10 @@ class KeybindCollector:
         with open(filename, mode="wt") as file:
             file.write('modifiers\n')
             for key in self.keybind_modifiers:
-                file.write(str(self._stringify_key(key)) + '\n')
+                file.write(str(_stringify_key(key)) + '\n')
             if self.bound_key is not None:
                 file.write('key\n')
-                file.write(str(self._stringify_key(self.bound_key)))
+                file.write(str(_stringify_key(self.bound_key)))
             elif self.bound_scroll is not None:
                 file.write('scroll\n')
                 file.write(str(self.bound_scroll.value))
@@ -242,14 +253,14 @@ keybind = collector.collect_keybind()
 collector.save_keybind('keybind.kbd')
 print(f'Collected keybind: {keybind}')
 
-binding = load_keybind_from_file('keybind.kbd')
+key_binding = load_keybind_from_file('keybind.kbd')
 
 
 def woo():
     print('woohoo')
 
 
-listener = KeybindListener(binding, woo)
+listener = KeybindListener(key_binding, woo)
 listener.start()
 
 while True:
