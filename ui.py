@@ -95,7 +95,8 @@ class ClickableLineEdit(QLineEdit):
 class UserKeybindInputThread(QThread):
     keybind_changed = pyqtSignal(str)
 
-    def __init__(self):
+    def __init__(self, save_file: str):
+        self.save_file = save_file
         QThread.__init__(self)
 
     def _get_vk(self, key: Key | KeyCode):
@@ -114,7 +115,7 @@ class UserKeybindInputThread(QThread):
         bound_key = binding.bound_key
         bound_scroll = binding.bound_scroll
         print(f'Modifier: {modifier_keys}, Key: {bound_key}, Scroll: {bound_scroll}')
-        collector.save_keybind('keybind.kbd')
+        collector.save_keybind(self.save_file)
         keybind_string = ' + '.join([self._get_key_name(key) for key in
                                      modifier_keys]) + f' + {self._get_key_name(bound_key) if bound_scroll is None else bound_scroll.value}'
         self.keybind_changed.emit(keybind_string)
@@ -122,9 +123,12 @@ class UserKeybindInputThread(QThread):
 
 class KeybindSetter(QWidget):
 
-    def __init__(self):
+    def __init__(self, label: str, save_file: str):
         super().__init__()
+        self.save_file = save_file
         layout = QFormLayout()
+        self.label = QLabel(label)
+        layout.addRow(self.label)
         self.keybind_input = ClickableLineEdit('Click to set')
         self.keybind_input.resize(250, 40)
         self.keybind_input.clicked.connect(self._clicked)
@@ -137,19 +141,21 @@ class KeybindSetter(QWidget):
     def _clicked(self):
         self.keybind_input.setText('Press keybind...')
         # threading.Thread(target=self._collect_keybind_from_user).start()
-        self.keybind_collector = UserKeybindInputThread()
+        self.keybind_collector = UserKeybindInputThread(self.save_file)
         self.keybind_collector.keybind_changed.connect(self._update_keybind_text)
         self.keybind_collector.start()
 
 
 class OptionsWindow(QWidget):
 
-    def __init__(self):
+    def __init__(self, volume_up_keybind_file: str, volume_down_keybind_file: str):
         super().__init__()
         self.setAutoFillBackground(False)
         layout = QFormLayout()
         self.volume_tick_selector = VolumeTickSelector()
         layout.addRow(self.volume_tick_selector)
-        self.keybind_input = KeybindSetter()
-        layout.addRow(self.keybind_input)
+        self.volume_up_keybind_input = KeybindSetter('Volume Up', volume_up_keybind_file)
+        layout.addRow(self.volume_up_keybind_input)
+        self.volume_down_keybind_input = KeybindSetter('Volume Down', volume_down_keybind_file)
+        layout.addRow(self.volume_down_keybind_input)
         self.setLayout(layout)

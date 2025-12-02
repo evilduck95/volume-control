@@ -40,5 +40,5 @@ def on_press_2(key):
     last_key = KeyCode.from_vk(key.vk)
 
 
-with Listener(on_press=on_press_2, suppress=True) as listener:
+with Listener(on_press=on_press, suppress=True) as listener:
     listener.join()

@@ -1,7 +1,5 @@
-import math
 import sys
 import threading
-import time
 
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
@@ -17,13 +15,19 @@ idle_time = 3
 modifier_key = keyboard.Key.shift
 modifier_key_pressed = False
 terminate_application = False
+volume_up_keybind_file = 'volume_up.kbd'
+volume_down_keybind_file = 'volume_down.kbd'
 
 # GUI Setup
 gui_app = QApplication(sys.argv)
 gui_app.setQuitOnLastWindowClosed(False)
 volume_bar = ui.VolumeBar(2)
-options_menu = ui.OptionsWindow()
+# TODO: Provide filenames and current bindings so options displays current state to user
+options_menu = ui.OptionsWindow(volume_up_keybind_file, volume_down_keybind_file)
 
+# TODO: Add a keybind listener in that immediately starts listening for binds
+#  The listener should be updatable on the fly with new keybindings just in case we change our options
+#  The files take care of persisting these between restarts
 
 def on_key_pressed(key):
     global modifier_key_pressed, terminate_application
@@ -49,6 +53,14 @@ def on_mouse_scroll(_x, _y, _dx, dy):
         print('Updated volume: ' + str(updated_volume))
         if updated_volume is None:
             return
+        volume_bar.set_percentage(round(updated_volume * 100))
+        gui_app.processEvents()
+
+
+def active_app_volume_change(delta):
+    updated_volume = volumeutils.change_active_window_volume(delta)
+    print('Updated volume: ' + str(updated_volume))
+    if updated_volume is not None:
         volume_bar.set_percentage(round(updated_volume * 100))
         gui_app.processEvents()
 
@@ -81,20 +93,20 @@ def on_mouse_scroll(_x, _y, _dx, dy):
 #         if terminate_application:
 #             exit(0)
 
-keyboard_listener: keyboard.Listener
-mouse_listener: mouse.Listener
-
-
-def start_input_listeners():
-    global keyboard_listener, mouse_listener
-    keyboard_listener = keyboard.Listener(on_press=on_key_pressed, on_release=on_key_released)
-    mouse_listener = mouse.Listener(on_scroll=on_mouse_scroll)
-
-    keyboard_listener.start()
-    mouse_listener.start()
-
-
-threading.Thread(target=start_input_listeners).start()
+# keyboard_listener: keyboard.Listener
+# mouse_listener: mouse.Listener
+#
+#
+# def start_input_listeners():
+#     global keyboard_listener, mouse_listener
+#     keyboard_listener = keyboard.Listener(on_press=on_key_pressed, on_release=on_key_released)
+#     mouse_listener = mouse.Listener(on_scroll=on_mouse_scroll)
+#
+#     keyboard_listener.start()
+#     mouse_listener.start()
+#
+#
+# threading.Thread(target=start_input_listeners).start()
 
 tray = QSystemTrayIcon()
 tray_icon = QIcon("volume_white.png")

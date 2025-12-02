@@ -1,6 +1,7 @@
+import os.path
 import time
 from enum import Enum
-from typing import Iterable
+from typing import Iterable, Callable
 
 from pynput import keyboard, mouse
 from pynput.keyboard import KeyCode, Key
@@ -91,16 +92,31 @@ class Binding:
         return self.__bound_scroll is not None
 
     @property
-    def modifiers(self) -> set[int]:
-        return self.__modifier_codes
+    def modifiers(self) -> set[Key | KeyCode]:
+        return self.__modifier_keys
 
     @property
-    def bound_key(self) -> int:
-        return self.__bound_key_code
+    def bound_key(self) -> [Key | KeyCode]:
+        return self.__bound_key
 
     @property
     def bound_scroll(self) -> ScrollAction:
         return self.__bound_scroll
+
+
+class FunctionBinding:
+
+    def __init__(self, binding: Binding, callback: Callable):
+        self.__binding = binding
+        self.__callback = callback
+
+    @property
+    def binding(self) -> Binding:
+        return self.__binding
+
+    @property
+    def callback(self) -> Callable:
+        return self.__callback
 
 
 # TODO: Reads the file ok right now.
@@ -109,6 +125,8 @@ def load_keybind_from_file(filename: str):
     modifiers: set[KeyCode] = set()
     key: [KeyCode | None] = None
     scroll: [ScrollAction | None] = None
+    if not os.path.exists(filename):
+        return
     with open(filename, 'rt') as file:
         section = ''
         for line in file:
@@ -127,46 +145,6 @@ def load_keybind_from_file(filename: str):
         key,
         scroll
     )
-
-
-class KeybindListener:
-
-    def __init__(self, binding: Binding, callback=noop):
-        self.binding = binding
-        self.keys_pressed: set[Key | KeyCode] = set()
-        self.callback = callback
-
-    # Callback if our binding is satisfied
-    def _check_keybind(self, scroll=None):
-        if self.binding.is_activated(self.keys_pressed, scroll):
-            self.callback()
-
-    def _key_pressed(self, key: Key | KeyCode):
-        self.keys_pressed.add(key)
-        if self._check_keybind():
-            self.callback()
-
-    def _key_released(self, key: Key | KeyCode):
-        self.keys_pressed.discard(key)
-
-    def _mouse_scrolled(self, _x, _y, _dx, dy):
-        mouse_scroll = ScrollAction.DOWN if dy < 0 else ScrollAction.UP
-        self._check_keybind(mouse_scroll)
-
-    def start(self):
-        keyboard.Listener(
-            on_press=self._key_pressed,
-            on_release=self._key_released,
-            suppress=True).start()
-        # Only listen for mouse events if we bound a scroll action
-        if self.binding.is_scroll_based():
-            mouse.Listener(
-                on_scroll=self._mouse_scrolled
-            ).start()
-
-
-# With thanks to:
-# https://medium.com/@birenmer/threading-the-needle-returning-values-from-python-threads-with-ease-ace21193c148
 
 
 class KeybindCollector:
@@ -201,7 +179,7 @@ class KeybindCollector:
         self.keybind_complete = True
 
     def _on_press(self, key: Key | KeyCode):
-        print(f'Press: {key}')
+        # print(f'Press: {key}')
         if not self.keybind_complete:
             if key in MODIFIER_KEYS:
                 self.keybind_modifiers.add(key)
@@ -210,7 +188,7 @@ class KeybindCollector:
                 self.keybind_complete = True
 
     def _on_release(self, key: Key | KeyCode):
-        print(f'Release: {key}')
+        # print(f'Release: {key}')
         self.keybind_modifiers.discard(key)
 
     def _for_canonical(self, func):
@@ -229,7 +207,8 @@ class KeybindCollector:
     def collect_keybind(self) -> Binding:
         """
         Thread Blocking call that returns the user-specified keybind once they have provided one
-        :return: A set of Keys specifying a keybind (e.g. {'G', <Key.shift: <65505>>, <Key.ctrl: <65507>>})
+        :return: A set of Keys specifying a keybind e.g. {'G', <Key.shift: <65505>>, <Key.ctrl: <65507>>}
+        FYI: Your key *codes* may differ
         """
         bind_collection_thread = ReturningThread(target=self._listen_for_bind)
         bind_collection_thread.start()
@@ -248,19 +227,76 @@ class KeybindCollector:
                 file.write(str(self.bound_scroll.value))
 
 
-collector = KeybindCollector()
-keybind = collector.collect_keybind()
-collector.save_keybind('keybind.kbd')
-print(f'Collected keybind: {keybind}')
+class KeybindListener:
 
-key_binding = load_keybind_from_file('keybind.kbd')
+    def __init__(self, function_bindings: list[FunctionBinding]):
+        self.function_bindings = function_bindings
+        self.keys_pressed: set[Key | KeyCode] = set()
+
+    # Callback if our binding is satisfied
+    def _check_and_activate_keybind(self, scroll=None):
+        for function_binding in self.function_bindings:
+            if function_binding.binding.is_activated(self.keys_pressed, scroll):
+                function_binding.callback()
+
+    def _key_pressed(self, key: Key | KeyCode):
+        self.keys_pressed.add(key)
+        self._check_and_activate_keybind()
+
+    def _key_released(self, key: Key | KeyCode):
+        self.keys_pressed.discard(key)
+
+    def _mouse_scrolled(self, _x, _y, _dx, dy):
+        mouse_scroll = ScrollAction.DOWN if dy < 0 else ScrollAction.UP
+        self._check_and_activate_keybind(mouse_scroll)
+
+    def start(self):
+        keyboard.Listener(
+            on_press=self._key_pressed,
+            on_release=self._key_released,
+            suppress=True).start()
+        # Only listen for mouse events if we bound a scroll action
+        if any(fb.binding.is_scroll_based() for fb in self.function_bindings):
+            mouse.Listener(
+                on_scroll=self._mouse_scrolled
+            ).start()
 
 
-def woo():
-    print('woohoo')
+DEFAULT_UP_BINDING = Binding(
+    modifier_keys={Key.ctrl, Key.shift},
+    bound_key=None,
+    bound_scroll=ScrollAction.UP)
+DEFAULT_DOWN_BINDING = Binding(
+    modifier_keys={Key.ctrl, Key.shift},
+    bound_key=None,
+    bound_scroll=ScrollAction.DOWN)
+
+# collector = KeybindCollector()
+# keybind = collector.collect_keybind()
+# collector.save_keybind('keybind.kbd')
+# print(f'Collected keybind: {keybind}')
+
+saved_up_binding = load_keybind_from_file('volume_up.kbd')
+saved_down_binding = load_keybind_from_file('volume_down.kbd')
+
+up_binding = DEFAULT_UP_BINDING if saved_up_binding is None else saved_up_binding
+down_binding = DEFAULT_DOWN_BINDING if saved_down_binding is None else saved_down_binding
 
 
-listener = KeybindListener(key_binding, woo)
+def up():
+    print('up')
+
+
+def down():
+    print('down')
+
+
+all_bindings = [
+    FunctionBinding(up_binding, up),
+    FunctionBinding(down_binding, down),
+]
+
+listener = KeybindListener(all_bindings)
 listener.start()
 
 while True:
