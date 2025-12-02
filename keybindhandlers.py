@@ -29,12 +29,12 @@ MODIFIER_KEYS = (
 noop = lambda *a, **k: None
 
 
-def _get_vk(key: Key | KeyCode):
+def get_virtual_key_code(key: Key | KeyCode):
     return key.vk if hasattr(key, 'vk') else key.value.vk
 
 
 def _convert_to_vks(keys: Iterable[Key | KeyCode]):
-    return set([_get_vk(key) for key in keys])
+    return set([get_virtual_key_code(key) for key in keys])
 
 
 def _get_key_name(key: Key | KeyCode):
@@ -43,7 +43,7 @@ def _get_key_name(key: Key | KeyCode):
 
 
 def _stringify_key(key: Key | KeyCode):
-    vk = _get_vk(key)
+    vk = get_virtual_key_code(key)
     return _get_key_name(key) if vk is None else vk
 
 
@@ -71,7 +71,7 @@ class Binding:
 
         # Key Codes only for logic
         self.__modifier_codes: set[int] = _convert_to_vks(modifier_keys)
-        self.__bound_key_code: int = _get_vk(bound_key) if bound_key is not None else None
+        self.__bound_key_code: int = get_virtual_key_code(bound_key) if bound_key is not None else None
 
         # Scroll Value
         self.__bound_scroll: ScrollAction = bound_scroll
@@ -271,33 +271,33 @@ DEFAULT_DOWN_BINDING = Binding(
     bound_key=None,
     bound_scroll=ScrollAction.DOWN)
 
-# collector = KeybindCollector()
-# keybind = collector.collect_keybind()
-# collector.save_keybind('keybind.kbd')
-# print(f'Collected keybind: {keybind}')
+collector = KeybindCollector()
+keybind = collector.collect_keybind()
+collector.save_keybind('keybind.kbd')
+print(f'Collected keybind: {keybind}')
 
-saved_up_binding = load_keybind_from_file('volume_up.kbd')
-saved_down_binding = load_keybind_from_file('volume_down.kbd')
-
-up_binding = DEFAULT_UP_BINDING if saved_up_binding is None else saved_up_binding
-down_binding = DEFAULT_DOWN_BINDING if saved_down_binding is None else saved_down_binding
-
-
-def up():
-    print('up')
-
-
-def down():
-    print('down')
-
-
-all_bindings = [
-    FunctionBinding(up_binding, up),
-    FunctionBinding(down_binding, down),
-]
-
-listener = KeybindListener(all_bindings)
-listener.start()
-
-while True:
-    pass
+# saved_up_binding = load_keybind_from_file('volume_up.kbd')
+# saved_down_binding = load_keybind_from_file('volume_down.kbd')
+#
+# up_binding = DEFAULT_UP_BINDING if saved_up_binding is None else saved_up_binding
+# down_binding = DEFAULT_DOWN_BINDING if saved_down_binding is None else saved_down_binding
+#
+#
+# def up():
+#     print('up')
+#
+#
+# def down():
+#     print('down')
+#
+#
+# all_bindings = [
+#     FunctionBinding(up_binding, up),
+#     FunctionBinding(down_binding, down),
+# ]
+#
+# listener = KeybindListener(all_bindings)
+# listener.start()
+#
+# while True:
+#     pass

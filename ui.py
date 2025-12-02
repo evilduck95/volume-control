@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt, QRect, pyqtSignal, QThread
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QProgressBar, QLabel, QSlider, QFormLayout, QLineEdit
 from pynput.keyboard import KeyCode, Key
 
-from keybindhandlers import KeybindCollector
+from keybindhandlers import KeybindCollector, Binding, get_virtual_key_code
 
 PROGRESS_BAR_STYLE = """
 QProgressBar {
@@ -15,6 +15,20 @@ QProgressBar {
     text-align: center;
 }
 """
+
+
+def get_key_name(key: Key | KeyCode):
+    name = key.name if hasattr(key, 'name') else key.char
+    if name is None:
+        return str(get_virtual_key_code(key))
+    return name.capitalize()
+
+
+def pretty_binding_string(binding: Binding):
+    binding_activation_string = get_key_name(
+        binding.bound_key) if binding.bound_scroll is None else binding.bound_scroll.value
+    return (' + '.join([get_key_name(key) for key in binding.modifiers])
+            + f' + {binding_activation_string}')
 
 
 class VolumeBar(QWidget):
@@ -99,37 +113,24 @@ class UserKeybindInputThread(QThread):
         self.save_file = save_file
         QThread.__init__(self)
 
-    def _get_vk(self, key: Key | KeyCode):
-        return key.vk if hasattr(key, 'vk') else key.value.vk
-
-    def _get_key_name(self, key: Key | KeyCode):
-        name = key.name if hasattr(key, 'name') else key.char
-        if name is None:
-            return self._get_vk(key)
-        return name.capitalize()
-
     def run(self):
         collector = KeybindCollector()
         binding = collector.collect_keybind()
-        modifier_keys = binding.modifiers
-        bound_key = binding.bound_key
-        bound_scroll = binding.bound_scroll
-        print(f'Modifier: {modifier_keys}, Key: {bound_key}, Scroll: {bound_scroll}')
+        print(f'Modifier: {binding.modifiers}, Key: {binding.bound_key}, Scroll: {binding.bound_scroll}')
         collector.save_keybind(self.save_file)
-        keybind_string = ' + '.join([self._get_key_name(key) for key in
-                                     modifier_keys]) + f' + {self._get_key_name(bound_key) if bound_scroll is None else bound_scroll.value}'
+        keybind_string = pretty_binding_string(binding)
         self.keybind_changed.emit(keybind_string)
 
 
 class KeybindSetter(QWidget):
 
-    def __init__(self, label: str, save_file: str):
+    def __init__(self, label: str, save_file: str, current_binding: Binding):
         super().__init__()
         self.save_file = save_file
         layout = QFormLayout()
         self.label = QLabel(label)
         layout.addRow(self.label)
-        self.keybind_input = ClickableLineEdit('Click to set')
+        self.keybind_input = ClickableLineEdit(pretty_binding_string(current_binding))
         self.keybind_input.resize(250, 40)
         self.keybind_input.clicked.connect(self._clicked)
         layout.addRow(self.keybind_input)
@@ -148,14 +149,18 @@ class KeybindSetter(QWidget):
 
 class OptionsWindow(QWidget):
 
-    def __init__(self, volume_up_keybind_file: str, volume_down_keybind_file: str):
+    def __init__(self,
+                 volume_up_keybind_file: str,
+                 volume_down_keybind_file: str,
+                 volume_up_binding: Binding,
+                 volume_down_binding: Binding):
         super().__init__()
         self.setAutoFillBackground(False)
         layout = QFormLayout()
         self.volume_tick_selector = VolumeTickSelector()
         layout.addRow(self.volume_tick_selector)
-        self.volume_up_keybind_input = KeybindSetter('Volume Up', volume_up_keybind_file)
+        self.volume_up_keybind_input = KeybindSetter('Volume Up', volume_up_keybind_file, volume_up_binding)
         layout.addRow(self.volume_up_keybind_input)
-        self.volume_down_keybind_input = KeybindSetter('Volume Down', volume_down_keybind_file)
+        self.volume_down_keybind_input = KeybindSetter('Volume Down', volume_down_keybind_file, volume_down_binding)
         layout.addRow(self.volume_down_keybind_input)
         self.setLayout(layout)

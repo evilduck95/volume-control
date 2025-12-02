@@ -7,6 +7,7 @@ from pynput import keyboard, mouse
 
 import ui
 import volumeutils
+from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_DOWN_BINDING
 
 # Constants
 idle_time = 3
@@ -15,15 +16,28 @@ idle_time = 3
 modifier_key = keyboard.Key.shift
 modifier_key_pressed = False
 terminate_application = False
+
+# Bindings
 volume_up_keybind_file = 'volume_up.kbd'
 volume_down_keybind_file = 'volume_down.kbd'
+
+saved_up_binding = load_keybind_from_file('volume_up.kbd')
+saved_down_binding = load_keybind_from_file('volume_down.kbd')
+
+up_binding = DEFAULT_UP_BINDING if saved_up_binding is None else saved_up_binding
+down_binding = DEFAULT_DOWN_BINDING if saved_down_binding is None else saved_down_binding
 
 # GUI Setup
 gui_app = QApplication(sys.argv)
 gui_app.setQuitOnLastWindowClosed(False)
 volume_bar = ui.VolumeBar(2)
 # TODO: Provide filenames and current bindings so options displays current state to user
-options_menu = ui.OptionsWindow(volume_up_keybind_file, volume_down_keybind_file)
+options_menu = ui.OptionsWindow(
+    volume_up_keybind_file,
+    volume_down_keybind_file,
+    up_binding,
+    down_binding
+)
 
 # TODO: Add a keybind listener in that immediately starts listening for binds
 #  The listener should be updatable on the fly with new keybindings just in case we change our options
