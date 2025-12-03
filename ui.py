@@ -6,7 +6,7 @@ from PyQt6.QtCore import Qt, QRect, pyqtSignal, QThread
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QProgressBar, QLabel, QSlider, QFormLayout, QLineEdit
 from pynput.keyboard import KeyCode, Key
 
-from keybindhandlers import KeybindCollector, Binding, get_virtual_key_code
+from keybindhandlers import KeybindCollector, get_virtual_key_code, SavedKeybind
 
 PROGRESS_BAR_STYLE = """
 QProgressBar {
@@ -24,11 +24,17 @@ def get_key_name(key: Key | KeyCode):
     return name.capitalize()
 
 
-def pretty_binding_string(binding: Binding):
-    binding_activation_string = get_key_name(
-        binding.bound_key) if binding.bound_scroll is None else binding.bound_scroll.value
-    return (' + '.join([get_key_name(key) for key in binding.modifiers])
-            + f' + {binding_activation_string}')
+def pretty_binding_string(binding: SavedKeybind):
+    if binding.is_scroll_based():
+        binding_activation_string = binding.bound_scroll.value
+    else:
+        binding_activation_string = binding.saved_bound_key if hasattr(binding, 'saved_bound_key') else get_key_name(
+            binding.bound_key)
+    binding_activation_string = binding_activation_string.capitalize()
+    if hasattr(binding, 'saved_modifiers'):
+        return ' + '.join([name.capitalize() for name in binding.saved_modifiers]) + f' + {binding_activation_string}'
+    else:
+        return ' + '.join([get_key_name(key) for key in binding.modifiers]) + f' + {binding_activation_string}'
 
 
 class VolumeBar(QWidget):
@@ -124,7 +130,7 @@ class UserKeybindInputThread(QThread):
 
 class KeybindSetter(QWidget):
 
-    def __init__(self, label: str, save_file: str, current_binding: Binding):
+    def __init__(self, label: str, save_file: str, current_binding: SavedKeybind):
         super().__init__()
         self.save_file = save_file
         layout = QFormLayout()
@@ -152,8 +158,8 @@ class OptionsWindow(QWidget):
     def __init__(self,
                  volume_up_keybind_file: str,
                  volume_down_keybind_file: str,
-                 volume_up_binding: Binding,
-                 volume_down_binding: Binding):
+                 volume_up_binding: SavedKeybind,
+                 volume_down_binding: SavedKeybind):
         super().__init__()
         self.setAutoFillBackground(False)
         layout = QFormLayout()

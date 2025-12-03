@@ -31,14 +31,20 @@ def on_press(key):
         sys.exit()
 
 
-def on_press_2(key):
-    global last_key
-    if key == last_key:
-        print(f'Key: {key} is the same as last:  {last_key}')
+def _stringify_key(key: Key | KeyCode):
+    key_string: str
+    if hasattr(key, 'char'):
+        char = key.char
+        key_string = str(key.vk) if char is None else char
     else:
-        print(f'Key: {key}')
-    last_key = KeyCode.from_vk(key.vk)
+        key_name = key.name
+        key_string = key.value.vk if key_name is None else key_name
+    print(f'Key String: {key_string}')
 
 
-with Listener(on_press=on_press, suppress=True) as listener:
+def on_press_2(key):
+    _stringify_key(key)
+
+
+with Listener(on_press=on_press_2, suppress=True) as listener:
     listener.join()

@@ -29,8 +29,11 @@ MODIFIER_KEYS = (
 noop = lambda *a, **k: None
 
 
-def get_virtual_key_code(key: Key | KeyCode):
-    return key.vk if hasattr(key, 'vk') else key.value.vk
+def get_virtual_key_code(key: Key | KeyCode | Button):
+    if type(key) is Button:
+        return key.value
+    else:
+        return key.vk if hasattr(key, 'vk') else key.value.vk
 
 
 def _convert_to_vks(keys: Iterable[Key | KeyCode]):
@@ -42,9 +45,36 @@ def _get_key_name(key: Key | KeyCode):
     return name.capitalize()
 
 
-def _stringify_key(key: Key | KeyCode):
-    vk = get_virtual_key_code(key)
-    return _get_key_name(key) if vk is None else vk
+def stringify_key(key: Key | KeyCode | Button) -> str:
+    key_string: str
+    if type(key) is Button:
+        name = key.name
+        key_string = str(key.value) if name is None else name
+    else:
+        if hasattr(key, 'char'):
+            char = key.char
+            key_string = str(key.vk) if char is None else char
+        else:
+            key_name = key.name
+            key_string = str(key.value.vk) if key_name is None else key_name
+    return key_string
+
+
+def compare_non_null(a, b):
+    return a is not None and a == b
+
+
+def are_same_keys(
+        key_a: [Key | KeyCode | Button],
+        key_b: [Key | KeyCode | Button]) -> bool:
+    # Both are Mouse Buttons
+    if type(key_a) is Button and type(key_b) is Button:
+        return compare_non_null(key_a.name, key_b.name) or compare_non_null(key_a.value, key_b.value)
+    else:
+        # Get virtual key to best of ability and compare the value
+        key_a_vk = key_a.vk if hasattr(key_a, 'vk') else key_a.value.vk
+        key_b_vk = key_b.vk if hasattr(key_b, 'vk') else key_b.value.vk
+        return compare_non_null(key_a_vk, key_b_vk)
 
 
 class ScrollAction(Enum):
@@ -76,7 +106,7 @@ class Binding:
         # Scroll Value
         self.__bound_scroll: ScrollAction = bound_scroll
 
-    def is_activated(self, keys_pressed: set[Key | KeyCode], scroll_action=None):
+    def is_activated(self, keys_pressed: set[Key | KeyCode | Button], scroll_action=None):
         # Check if all of our wanted modifiers are a part of the set of pressed keys
         pressed_codes = _convert_to_vks(keys_pressed)
         modifiers_pressed = self.__modifier_codes.issubset(pressed_codes)
@@ -119,28 +149,67 @@ class FunctionBinding:
         return self.__callback
 
 
+class SavedKey:
+
+    def __init__(self, vk: int, name: str):
+        self.__vk = vk
+        self.__name = name
+
+    @property
+    def vk(self):
+        return self.__vk
+
+    @property
+    def name(self):
+        return self.__name
+
+
+class SavedKeybind(Binding):
+
+    def __init__(self, modifier_keys: set[SavedKey],
+                 bound_key: [SavedKey | None],
+                 bound_scroll: [ScrollAction] = ScrollAction.NONE):
+        super().__init__(
+            set([KeyCode.from_vk(key.vk) for key in modifier_keys]),
+            None if bound_key is None else KeyCode.from_vk(bound_key),
+            bound_scroll
+        )
+        self.__saved_modifier_names = [key.name for key in modifier_keys]
+        self.__saved_bound_key_name = None if bound_key is None else bound_key.name
+
+    @property
+    def saved_modifiers(self):
+        return self.__saved_modifier_names
+
+    @property
+    def saved_bound_key(self):
+        return self.__saved_bound_key_name
+
+
 # TODO: Reads the file ok right now.
 #  Feels a bit raw atm and could probably do with some centralised ruling
 def load_keybind_from_file(filename: str):
-    modifiers: set[KeyCode] = set()
-    key: [KeyCode | None] = None
+    modifiers: set[SavedKey] = set()
+    key: [SavedKey | None] = None
     scroll: [ScrollAction | None] = None
     if not os.path.exists(filename):
         return
     with open(filename, 'rt') as file:
         section = ''
         for line in file:
-            value = line.replace('\n', '').strip()
-            if value in ('modifiers', 'key', 'scroll'):
-                section = value
+            value = line.replace('\n', '').strip().split(':')
+            if value[0] in ('modifiers', 'key', 'scroll'):
+                section = value[0]
             else:
                 if section == 'modifiers':
-                    modifiers.add(KeyCode.from_vk(int(value)))
+                    modifiers.add(SavedKey(int(value[0]), value[1]))
+                    # modifiers.add(KeyCode.from_vk(int(value[0])))
                 elif section == 'key':
-                    key = KeyCode.from_vk(int(value))
+                    key = SavedKey(int(value[0]), value[1])
+                    # key = KeyCode.from_vk(int(value[0]))
                 elif section == 'scroll':
                     scroll = ScrollAction.for_value(value)
-    return Binding(
+    return SavedKeybind(
         modifiers,
         key,
         scroll
@@ -151,7 +220,7 @@ class KeybindCollector:
 
     def __init__(self):
         self.keybind_modifiers = set()
-        self.bound_key: Key | KeyCode = None
+        self.bound_key: Key | KeyCode | Button = None
         self.bound_scroll: ScrollAction = None
         self.keybind_complete = False
         self.keyboard_listener = keyboard.Listener(
@@ -162,6 +231,9 @@ class KeybindCollector:
         self.mouse_listener = mouse.Listener(on_click=self._on_mouse_press, on_scroll=self._on_mouse_scroll)
 
     def _on_mouse_press(self, _x, _y, button: Button, pressed):
+        # Don't allow binding normal mouse buttons (Pure madness)
+        if button in [Button.left, Button.right]:
+            return
         # Stops any rogue mouse release from triggering end of capture
         if pressed:
             self.bound_key = button
@@ -191,6 +263,8 @@ class KeybindCollector:
         # print(f'Release: {key}')
         self.keybind_modifiers.discard(key)
 
+    # TODO: This might make the keybind files juuuust a little bit clearer if we use it
+    #  I haven't decided if I think it's worth it yet
     def _for_canonical(self, func):
         return lambda key: func(self.keyboard_listener.canonical(key))
 
@@ -218,10 +292,10 @@ class KeybindCollector:
         with open(filename, mode="wt") as file:
             file.write('modifiers\n')
             for key in self.keybind_modifiers:
-                file.write(str(_stringify_key(key)) + '\n')
+                file.write(f'{str(get_virtual_key_code(key))}:{stringify_key(key)}\n')
             if self.bound_key is not None:
                 file.write('key\n')
-                file.write(str(_stringify_key(self.bound_key)))
+                file.write(f'{str(get_virtual_key_code(self.bound_key))}:{stringify_key(self.bound_key)}')
             elif self.bound_scroll is not None:
                 file.write('scroll\n')
                 file.write(str(self.bound_scroll.value))
@@ -262,19 +336,22 @@ class KeybindListener:
             ).start()
 
 
-DEFAULT_UP_BINDING = Binding(
-    modifier_keys={Key.ctrl, Key.shift},
+MOCK_CTRL = SavedKey(vk=0, name='ctrl')
+MOCK_SHIFT = SavedKey(vk=0, name='shift')
+
+DEFAULT_UP_BINDING = SavedKeybind(
+    modifier_keys={MOCK_CTRL, MOCK_SHIFT},
     bound_key=None,
     bound_scroll=ScrollAction.UP)
-DEFAULT_DOWN_BINDING = Binding(
-    modifier_keys={Key.ctrl, Key.shift},
+DEFAULT_DOWN_BINDING = SavedKeybind(
+    modifier_keys={MOCK_CTRL, MOCK_SHIFT},
     bound_key=None,
     bound_scroll=ScrollAction.DOWN)
 
-collector = KeybindCollector()
-keybind = collector.collect_keybind()
-collector.save_keybind('keybind.kbd')
-print(f'Collected keybind: {keybind}')
+# collector = KeybindCollector()
+# keybind = collector.collect_keybind()
+# collector.save_keybind('keybind.kbd')
+# print(f'Collected keybind: {keybind}')
 
 # saved_up_binding = load_keybind_from_file('volume_up.kbd')
 # saved_down_binding = load_keybind_from_file('volume_down.kbd')
