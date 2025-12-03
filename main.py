@@ -1,13 +1,24 @@
 import sys
-import threading
 
+import yaml
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
-from pynput import keyboard, mouse
+from pynput import keyboard
 
 import ui
 import volumeutils
-from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_DOWN_BINDING
+from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_DOWN_BINDING, FunctionBinding, \
+    KeybindListener
+
+
+def load_configs(filename: str):
+    with open(filename) as config_file:
+        config = yaml.safe_load(config_file)
+        volume = config['volume']
+        control = config['control']
+        ui = config['ui']
+    return volume, control, ui
+
 
 # Constants
 idle_time = 3
@@ -16,6 +27,7 @@ idle_time = 3
 modifier_key = keyboard.Key.shift
 modifier_key_pressed = False
 terminate_application = False
+(volume_config, control_config, ui_config) = load_configs('config.yml')
 
 # Bindings
 volume_up_keybind_file = 'volume_up.kbd'
@@ -31,13 +43,13 @@ down_binding = DEFAULT_DOWN_BINDING if saved_down_binding is None else saved_dow
 gui_app = QApplication(sys.argv)
 gui_app.setQuitOnLastWindowClosed(False)
 volume_bar = ui.VolumeBar(2)
-# TODO: Provide filenames and current bindings so options displays current state to user
 options_menu = ui.OptionsWindow(
     volume_up_keybind_file,
     volume_down_keybind_file,
     up_binding,
     down_binding
 )
+
 
 # TODO: Add a keybind listener in that immediately starts listening for binds
 #  The listener should be updatable on the fly with new keybindings just in case we change our options
@@ -71,7 +83,7 @@ def on_mouse_scroll(_x, _y, _dx, dy):
         gui_app.processEvents()
 
 
-def active_app_volume_change(delta):
+def active_app_volume_change(delta: float):
     updated_volume = volumeutils.change_active_window_volume(delta)
     print('Updated volume: ' + str(updated_volume))
     if updated_volume is not None:
@@ -79,6 +91,24 @@ def active_app_volume_change(delta):
         gui_app.processEvents()
 
 
+def active_app_volume_up():
+    delta = float(volume_config['delta'])
+    active_app_volume_change(delta)
+
+
+def active_app_volume_down():
+    delta = float(volume_config['delta'])
+    active_app_volume_change(-delta)
+
+
+volume_up_binding = FunctionBinding(up_binding, active_app_volume_up)
+volume_down_binding = FunctionBinding(down_binding, active_app_volume_down)
+
+listener = KeybindListener([
+    volume_up_binding,
+    volume_down_binding
+])
+listener.start()
 # def volume_controller():
 #     global volume_bar_ui
 #     # Input Event Listeners
