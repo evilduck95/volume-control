@@ -358,12 +358,11 @@ class KeybindListener:
 
     def _mouse_scrolled(self, _x, _y, _dx, dy):
         mouse_scroll = ScrollAction.DOWN if dy < 0 else ScrollAction.UP
-        print(f'Mouse Scrolled: {mouse_scroll}, {dy}')
+        # print(f'Mouse Scrolled: {mouse_scroll}, {dy}')
         self._check_and_activate_keybind(mouse_scroll)
 
     def _mouse_clicked(self, _x, _y, button, pressed):
         if button not in (Button.left, Button.right):
-            print(f'Button: {button}')
             if pressed:
                 self.keys_pressed.add(button)
                 self._check_and_activate_keybind()

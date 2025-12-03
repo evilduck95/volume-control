@@ -38,6 +38,20 @@ def pretty_binding_string(binding: SavedKeybind):
         return ' + '.join([get_key_name(key) for key in binding.modifiers]) + f' + {binding_activation_string}'
 
 
+def get_monitor_center(monitor_index, window_width, window_height) -> QRect:
+    monitor: screeninfo.Monitor = screeninfo.get_monitors()[monitor_index]
+    return QRect(round(monitor.x + monitor.width / 2 - window_width / 2),
+                 round(monitor.y + monitor.height / 2 - window_height / 2), window_width, window_height)
+
+
+def get_primary_monitor():
+    for idx, monitor in enumerate(screeninfo.get_monitors()):
+        if monitor.is_primary:
+            return idx
+    print('How did we get here??')
+    return 0
+
+
 class VolumeBar(QWidget):
 
     def __init__(self, hide_timeout, monitor_index=0, bar_width=400, bar_height=100):
@@ -53,7 +67,7 @@ class VolumeBar(QWidget):
         self.progress_bar.setValue(0)
         self.progress_bar.setStyleSheet(PROGRESS_BAR_STYLE)
         layout.addWidget(self.progress_bar)
-        self.setGeometry(self._get_monitor_center(bar_width, bar_height))
+        self.setGeometry(get_monitor_center(monitor_index, bar_width, bar_height))
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowDoesNotAcceptFocus)
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.FramelessWindowHint)
@@ -74,11 +88,6 @@ class VolumeBar(QWidget):
             time.sleep(.5)
             if time.time() - self.last_update_stamp > self.hide_timeout:
                 self.hide()
-
-    def _get_monitor_center(self, bar_width, bar_height) -> QRect:
-        monitor: screeninfo.Monitor = screeninfo.get_monitors()[self.monitor_index]
-        return QRect(round(monitor.x + monitor.width / 2 - bar_width / 2),
-                     round(monitor.y + monitor.height / 2 - bar_height / 2), bar_width, bar_height)
 
 
 class VolumeTickSelector(QWidget):
@@ -165,6 +174,7 @@ class OptionsWindow(QWidget):
                  volume_down_binding: SavedKeybind,
                  restart_listeners_callback: Callable):
         super().__init__()
+        self.setWindowTitle('Options')
         self.setAutoFillBackground(False)
         layout = QFormLayout()
         self.volume_tick_selector = VolumeTickSelector()
@@ -182,3 +192,4 @@ class OptionsWindow(QWidget):
             restart_listeners_callback)
         layout.addRow(self.volume_down_keybind_input)
         self.setLayout(layout)
+        self.setGeometry(get_monitor_center(get_primary_monitor(), 100, 100))
