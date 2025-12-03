@@ -22,8 +22,7 @@ def change_sink_input_volume(pulse: pulsectl.Pulse,
     # Make the change and report
     pulse.volume_change_all_chans(sink_input, actual_change)
     updated_volume = pulse.volume_get_all_chans(sink_input)
-    print('Changed volume of app by: ' + str(actual_change) +
-          '. New Volume: ' + str(updated_volume))
+    # print('Changed volume of app by: ' + str(actual_change) + '. New Volume: ' + str(updated_volume))
     return updated_volume
 
 

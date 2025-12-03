@@ -227,7 +227,7 @@ def load_keybind_from_file(filename: str):
                 elif section == 'mouse_button':
                     key = SavedKey(int(value[0]), f'mouse_{value[1]}')
                 elif section == 'scroll':
-                    scroll = ScrollAction.for_value(value)
+                    scroll = ScrollAction.for_value(value[0])
     return SavedKeybind(
         modifiers,
         key,
@@ -328,6 +328,11 @@ class KeybindListener:
     def __init__(self, function_bindings: list[FunctionBinding]):
         self.function_bindings = function_bindings
         self.keys_pressed: set[Key | KeyCode] = set()
+        self.keyboard_listener: keyboard.Listener = keyboard.Listener(on_press=self._for_canonical(self._key_pressed),
+                                                                      on_release=self._for_canonical(self._key_released),
+                                                                      daemon=True)
+        self.mouse_listener: mouse.Listener = mouse.Listener(on_scroll=self._mouse_scrolled,
+                                                             on_click=self._mouse_clicked)
         for binding in [fb.binding for fb in function_bindings]:
             print(f'Loaded keybind: {binding.saved_modifiers}, {binding.saved_bound_key}, {binding.bound_scroll}')
 
@@ -337,17 +342,23 @@ class KeybindListener:
             if function_binding.binding.is_activated(self.keys_pressed, scroll):
                 print('Keybind activated')
                 function_binding.callback()
+                return
+
+    def _for_canonical(self, func):
+        return lambda key: func(self.keyboard_listener.canonical(key))
 
     def _key_pressed(self, key: Key | KeyCode):
-        print(f'Key: {key}')
+        # print(f'Key: {key}')
         self.keys_pressed.add(key)
         self._check_and_activate_keybind()
 
     def _key_released(self, key: Key | KeyCode):
+        # print(f'Released: {key}\n')
         self.keys_pressed.discard(key)
 
     def _mouse_scrolled(self, _x, _y, _dx, dy):
         mouse_scroll = ScrollAction.DOWN if dy < 0 else ScrollAction.UP
+        print(f'Mouse Scrolled: {mouse_scroll}, {dy}')
         self._check_and_activate_keybind(mouse_scroll)
 
     def _mouse_clicked(self, _x, _y, button, pressed):
@@ -361,18 +372,17 @@ class KeybindListener:
 
     def start(self):
         print('Starting Keyboard listener')
-        keyboard.Listener(
-            on_press=self._key_pressed,
-            on_release=self._key_released,
-            suppress=False).start()
+        self.keyboard_listener.start()
         # Only listen for mouse events if we bound a scroll action or mouse button
         all_bindings = [fb.binding for fb in self.function_bindings]
         if any(binding.is_scroll_based() or binding.has_mouse_buttons() for binding in all_bindings):
             print('Starting Mouse listener')
-            mouse.Listener(
-                on_scroll=self._mouse_scrolled,
-                on_click=self._mouse_clicked
-            ).start()
+            self.mouse_listener.start()
+
+    def stop(self):
+        self.keyboard_listener.stop()
+        self.mouse_listener.stop()
+        print('Stopped Keybind listener')
 
 
 MOCK_CTRL = SavedKey(vk=0, name='ctrl')

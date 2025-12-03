@@ -1,5 +1,6 @@
 import threading
 import time
+from typing import Callable
 
 import screeninfo
 from PyQt6.QtCore import Qt, QRect, pyqtSignal, QThread
@@ -130,7 +131,7 @@ class UserKeybindInputThread(QThread):
 
 class KeybindSetter(QWidget):
 
-    def __init__(self, label: str, save_file: str, current_binding: SavedKeybind):
+    def __init__(self, label: str, save_file: str, current_binding: SavedKeybind, after_set_callback: Callable):
         super().__init__()
         self.save_file = save_file
         layout = QFormLayout()
@@ -141,6 +142,7 @@ class KeybindSetter(QWidget):
         self.keybind_input.clicked.connect(self._clicked)
         layout.addRow(self.keybind_input)
         self.setLayout(layout)
+        self.after_set_callback = after_set_callback
 
     def _update_keybind_text(self, text):
         self.keybind_input.setText(text)
@@ -150,6 +152,7 @@ class KeybindSetter(QWidget):
         # threading.Thread(target=self._collect_keybind_from_user).start()
         self.keybind_collector = UserKeybindInputThread(self.save_file)
         self.keybind_collector.keybind_changed.connect(self._update_keybind_text)
+        self.keybind_collector.keybind_changed.connect(self.after_set_callback)
         self.keybind_collector.start()
 
 
@@ -159,14 +162,23 @@ class OptionsWindow(QWidget):
                  volume_up_keybind_file: str,
                  volume_down_keybind_file: str,
                  volume_up_binding: SavedKeybind,
-                 volume_down_binding: SavedKeybind):
+                 volume_down_binding: SavedKeybind,
+                 restart_listeners_callback: Callable):
         super().__init__()
         self.setAutoFillBackground(False)
         layout = QFormLayout()
         self.volume_tick_selector = VolumeTickSelector()
         layout.addRow(self.volume_tick_selector)
-        self.volume_up_keybind_input = KeybindSetter('Volume Up', volume_up_keybind_file, volume_up_binding)
+        self.volume_up_keybind_input = KeybindSetter(
+            'Volume Up',
+            volume_up_keybind_file,
+            volume_up_binding,
+            restart_listeners_callback)
         layout.addRow(self.volume_up_keybind_input)
-        self.volume_down_keybind_input = KeybindSetter('Volume Down', volume_down_keybind_file, volume_down_binding)
+        self.volume_down_keybind_input = KeybindSetter(
+            'Volume Down',
+            volume_down_keybind_file,
+            volume_down_binding,
+            restart_listeners_callback)
         layout.addRow(self.volume_down_keybind_input)
         self.setLayout(layout)

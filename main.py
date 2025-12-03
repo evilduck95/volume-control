@@ -33,11 +33,83 @@ terminate_application = False
 volume_up_keybind_file = 'volume_up.kbd'
 volume_down_keybind_file = 'volume_down.kbd'
 
-saved_up_binding = load_keybind_from_file('volume_up.kbd')
-saved_down_binding = load_keybind_from_file('volume_down.kbd')
+saved_up_binding = load_keybind_from_file(volume_up_keybind_file)
+saved_down_binding = load_keybind_from_file(volume_down_keybind_file)
 
-up_binding = DEFAULT_UP_BINDING if saved_up_binding is None else saved_up_binding
-down_binding = DEFAULT_DOWN_BINDING if saved_down_binding is None else saved_down_binding
+initial_up_binding = DEFAULT_UP_BINDING if saved_up_binding is None else saved_up_binding
+initial_down_binding = DEFAULT_DOWN_BINDING if saved_down_binding is None else saved_down_binding
+
+listener: KeybindListener
+
+
+# Old listener functions
+# def on_key_pressed(key):
+#     global modifier_key_pressed, terminate_application
+#     # Our wanted modifier has been pressed
+#     if key == modifier_key:
+#         modifier_key_pressed = True
+#     elif modifier_key_pressed and key == keyboard.KeyCode(char='x'):
+#         terminate_application = True
+#
+#
+# def on_key_released(key):
+#     global modifier_key_pressed
+#     # The wanted modifier has been un-pressed
+#     if key == modifier_key:
+#         modifier_key_pressed = False
+#
+#
+# def on_mouse_scroll(_x, _y, _dx, dy):
+#     # Only allowed to listen to mouse events if we have pressed the correct modifier
+#     if modifier_key_pressed:
+#         scroll_direction = 'down' if dy < 0 else 'up'
+#         updated_volume = volumeutils.change_active_window_volume(-.05 if scroll_direction == 'down' else +.05)
+#         print('Updated volume: ' + str(updated_volume))
+#         if updated_volume is None:
+#             return
+#         volume_bar.set_percentage(round(updated_volume * 100))
+#         gui_app.processEvents()
+
+
+def active_app_volume_change(delta: float):
+    updated_volume = volumeutils.change_active_window_volume(delta)
+    # print('Updated volume: ' + str(updated_volume))
+    if updated_volume is not None:
+        volume_bar.set_percentage(round(updated_volume * 100))
+        gui_app.processEvents()
+
+
+def active_app_volume_up():
+    print('Vol UP')
+    delta = float(volume_config['delta'])
+    active_app_volume_change(delta)
+
+
+def active_app_volume_down():
+    print('Vol DOWN')
+    delta = float(volume_config['delta'])
+    active_app_volume_change(-delta)
+
+
+def startup_keybind_listener():
+    global listener
+    up_binding = load_keybind_from_file(volume_up_keybind_file)
+    down_binding = load_keybind_from_file(volume_down_keybind_file)
+    volume_up_binding = FunctionBinding(up_binding, active_app_volume_up)
+    volume_down_binding = FunctionBinding(down_binding, active_app_volume_down)
+
+    listener = KeybindListener([
+        volume_up_binding,
+        volume_down_binding
+    ])
+    listener.start()
+
+
+def restart_keybind_listener():
+    listener.stop()
+    startup_keybind_listener()
+
+startup_keybind_listener()
 
 # GUI Setup
 gui_app = QApplication(sys.argv)
@@ -46,69 +118,11 @@ volume_bar = ui.VolumeBar(2)
 options_menu = ui.OptionsWindow(
     volume_up_keybind_file,
     volume_down_keybind_file,
-    up_binding,
-    down_binding
+    initial_up_binding,
+    initial_down_binding,
+    restart_keybind_listener
 )
 
-
-# TODO: Add a keybind listener in that immediately starts listening for binds
-#  The listener should be updatable on the fly with new keybindings just in case we change our options
-#  The files take care of persisting these between restarts
-
-def on_key_pressed(key):
-    global modifier_key_pressed, terminate_application
-    # Our wanted modifier has been pressed
-    if key == modifier_key:
-        modifier_key_pressed = True
-    elif modifier_key_pressed and key == keyboard.KeyCode(char='x'):
-        terminate_application = True
-
-
-def on_key_released(key):
-    global modifier_key_pressed
-    # The wanted modifier has been un-pressed
-    if key == modifier_key:
-        modifier_key_pressed = False
-
-
-def on_mouse_scroll(_x, _y, _dx, dy):
-    # Only allowed to listen to mouse events if we have pressed the correct modifier
-    if modifier_key_pressed:
-        scroll_direction = 'down' if dy < 0 else 'up'
-        updated_volume = volumeutils.change_active_window_volume(-.05 if scroll_direction == 'down' else +.05)
-        print('Updated volume: ' + str(updated_volume))
-        if updated_volume is None:
-            return
-        volume_bar.set_percentage(round(updated_volume * 100))
-        gui_app.processEvents()
-
-
-def active_app_volume_change(delta: float):
-    updated_volume = volumeutils.change_active_window_volume(delta)
-    print('Updated volume: ' + str(updated_volume))
-    if updated_volume is not None:
-        volume_bar.set_percentage(round(updated_volume * 100))
-        gui_app.processEvents()
-
-
-def active_app_volume_up():
-    delta = float(volume_config['delta'])
-    active_app_volume_change(delta)
-
-
-def active_app_volume_down():
-    delta = float(volume_config['delta'])
-    active_app_volume_change(-delta)
-
-
-volume_up_binding = FunctionBinding(up_binding, active_app_volume_up)
-volume_down_binding = FunctionBinding(down_binding, active_app_volume_down)
-
-listener = KeybindListener([
-    volume_up_binding,
-    volume_down_binding
-])
-listener.start()
 # def volume_controller():
 #     global volume_bar_ui
 #     # Input Event Listeners
