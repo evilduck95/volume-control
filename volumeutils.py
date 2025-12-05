@@ -12,7 +12,7 @@ def change_sink_input_volume(pulse: pulsectl.Pulse,
     # Already at maximum, I've elected to ignore over-amplification for now
     if requested_change > 0 and current_volume == 1:
         print('Already at max volume')
-        return 0
+        return 1
     # Safety first!
     if current_volume + requested_change > 1:
         actual_change = 1 - current_volume

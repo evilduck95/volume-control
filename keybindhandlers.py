@@ -1,4 +1,3 @@
-import os.path
 import time
 from enum import Enum
 from typing import Iterable, Callable
@@ -7,6 +6,7 @@ from pynput import keyboard, mouse
 from pynput.keyboard import KeyCode, Key
 from pynput.mouse import Button
 
+import fileutils
 from customthreading import ReturningThread
 
 MODIFIER_KEYS = (
@@ -43,6 +43,10 @@ def convert_to_vks(keys: Iterable[Key | KeyCode]):
 def get_key_name(key: Key | KeyCode):
     name = key.name if hasattr(key, 'name') else key.char
     return name.capitalize()
+
+
+def is_default_keybind(keys_pressed):
+    return {Key.shift, Key.ctrl}.issubset(keys_pressed)
 
 
 def key_is_mouse_button(key: [Key | KeyCode]) -> bool:
@@ -89,6 +93,7 @@ def are_same_keys(
 
 class ScrollAction(Enum):
     UP = '<ScrollUp>'
+
     DOWN = '<ScrollDown>'
 
     NONE = '<None>'
@@ -117,6 +122,11 @@ class Binding:
         # Scroll Value
         self.__bound_scroll: ScrollAction = bound_scroll
 
+        # Internal State
+        self.__key_codes_missing: bool = (any(get_virtual_key_code(key) in [None, 0] for key in modifier_keys) or
+                                          bound_key is None or
+                                          get_virtual_key_code(bound_key) in [None, 0])
+
     def is_activated(self, keys_pressed: set[Key | KeyCode | Button], scroll_action=None):
         # Check if all of our wanted modifiers are a part of the set of pressed keys
         pressed_codes = convert_to_vks(keys_pressed)
@@ -125,9 +135,10 @@ class Binding:
         action_binding_pressed: bool
         if self.is_scroll_based():
             action_binding_pressed = scroll_action == self.__bound_scroll
+            return modifiers_pressed and action_binding_pressed and len(keys_pressed) == len(self.__modifier_codes)
         else:
             action_binding_pressed = self.__bound_key_code in pressed_codes
-        return modifiers_pressed and action_binding_pressed
+            return modifiers_pressed and action_binding_pressed and len(keys_pressed) == len(self.__modifier_codes) + 1
 
     def is_scroll_based(self):
         return self.__bound_scroll is not None
@@ -209,30 +220,34 @@ def load_keybind_from_file(filename: str):
     modifiers: set[SavedKey] = set()
     key: [SavedKey | None] = None
     scroll: [ScrollAction | None] = None
-    if not os.path.exists(filename):
+    if not fileutils.does_resource_exist(filename):
+        print(f'Keybind file: {filename} not found, skipping...')
         return
-    with open(filename, 'rt') as file:
-        section = ''
-        for line in file:
-            value = line.replace('\n', '').strip().split(':')
-            if value[0] in ('modifiers', 'key', 'mouse_button', 'scroll'):
-                section = value[0]
-            else:
-                if section == 'modifiers':
-                    modifiers.add(SavedKey(int(value[0]), value[1]))
-                    # modifiers.add(KeyCode.from_vk(int(value[0])))
-                elif section == 'key':
-                    key = SavedKey(int(value[0]), value[1])
-                    # key = KeyCode.from_vk(int(value[0]))
-                elif section == 'mouse_button':
-                    key = SavedKey(int(value[0]), f'mouse_{value[1]}')
-                elif section == 'scroll':
-                    scroll = ScrollAction.for_value(value[0])
-    return SavedKeybind(
-        modifiers,
-        key,
-        scroll
-    )
+    try:
+        with fileutils.open_resource(filename, 'rt') as file:
+            section = ''
+            for line in file:
+                value = line.replace('\n', '').strip().split(':')
+                if value[0] in ('modifiers', 'key', 'mouse_button', 'scroll'):
+                    section = value[0]
+                else:
+                    if section == 'modifiers':
+                        modifiers.add(SavedKey(int(value[0]), value[1]))
+                        # modifiers.add(KeyCode.from_vk(int(value[0])))
+                    elif section == 'key':
+                        key = SavedKey(int(value[0]), value[1])
+                        # key = KeyCode.from_vk(int(value[0]))
+                    elif section == 'mouse_button':
+                        key = SavedKey(int(value[0]), f'mouse_{value[1]}')
+                    elif section == 'scroll':
+                        scroll = ScrollAction.for_value(value[0])
+        return SavedKeybind(
+            modifiers,
+            key,
+            scroll
+        )
+    except FileNotFoundError:
+        return None
 
 
 class KeybindCollector:
@@ -247,7 +262,10 @@ class KeybindCollector:
             on_release=self._on_release,
             suppress=True
         )
-        self.mouse_listener = mouse.Listener(on_click=self._on_mouse_press, on_scroll=self._on_mouse_scroll)
+        self.mouse_listener = mouse.Listener(
+            on_click=self._on_mouse_press,
+            on_scroll=self._on_mouse_scroll
+        )
 
     def _on_mouse_press(self, _x, _y, button: Button, pressed):
         # Don't allow binding normal mouse buttons (Pure madness)
@@ -308,7 +326,8 @@ class KeybindCollector:
         return bind_collection_thread.join()
 
     def save_keybind(self, filename: str):
-        with open(filename, mode="wt") as file:
+        print(f'Saving bind to file: {filename}')
+        with fileutils.open_resource(filename, mode="w+") as file:
             file.write('modifiers\n')
             for key in self.keybind_modifiers:
                 file.write(f'{str(get_virtual_key_code(key))}:{stringify_key(key)}\n')
@@ -328,13 +347,18 @@ class KeybindListener:
     def __init__(self, function_bindings: list[FunctionBinding]):
         self.function_bindings = function_bindings
         self.keys_pressed: set[Key | KeyCode] = set()
-        self.keyboard_listener: keyboard.Listener = keyboard.Listener(on_press=self._for_canonical(self._key_pressed),
-                                                                      on_release=self._for_canonical(self._key_released),
-                                                                      daemon=True)
-        self.mouse_listener: mouse.Listener = mouse.Listener(on_scroll=self._mouse_scrolled,
-                                                             on_click=self._mouse_clicked)
+        self.keyboard_listener: keyboard.Listener = keyboard.Listener(
+            on_press=self._for_canonical(self._key_pressed),
+            on_release=self._for_canonical(
+                self._key_released),
+            daemon=True)
+        self.mouse_listener: mouse.Listener = mouse.Listener(
+            on_scroll=self._mouse_scrolled,
+            on_click=self._mouse_clicked,
+            daemon=True)
         for binding in [fb.binding for fb in function_bindings]:
-            print(f'Loaded keybind: {binding.saved_modifiers}, {binding.saved_bound_key}, {binding.bound_scroll}')
+            if hasattr(binding, 'saved_modifiers'):
+                print(f'Loaded keybind: {binding.saved_modifiers}, {binding.saved_bound_key}, {binding.bound_scroll}')
 
     # Callback if our binding is satisfied
     def _check_and_activate_keybind(self, scroll=None):
@@ -348,17 +372,22 @@ class KeybindListener:
         return lambda key: func(self.keyboard_listener.canonical(key))
 
     def _key_pressed(self, key: Key | KeyCode):
-        # print(f'Key: {key}')
+        print(f'Key: {key}')
         self.keys_pressed.add(key)
         self._check_and_activate_keybind()
 
     def _key_released(self, key: Key | KeyCode):
-        # print(f'Released: {key}\n')
-        self.keys_pressed.discard(key)
+        print(f'Released: {key}\n')
+        if key in self.keys_pressed:
+            self.keys_pressed.remove(key)
+        else:
+            # TODO: Need to notify the user of when this happens until I get a better Keyboard listener library
+            print(f'Unknown key: {key} lifted, releasing all modifiers')
+            self.keys_pressed.clear()
 
     def _mouse_scrolled(self, _x, _y, _dx, dy):
         mouse_scroll = ScrollAction.DOWN if dy < 0 else ScrollAction.UP
-        # print(f'Mouse Scrolled: {mouse_scroll}, {dy}')
+        print(f'Mouse Scrolled: {mouse_scroll}, {dy}')
         self._check_and_activate_keybind(mouse_scroll)
 
     def _mouse_clicked(self, _x, _y, button, pressed):

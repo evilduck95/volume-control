@@ -5,6 +5,7 @@ from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from pynput import keyboard
 
+import fileutils
 import ui
 import volumeutils
 from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_DOWN_BINDING, FunctionBinding, \
@@ -12,7 +13,7 @@ from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_
 
 
 def load_configs(filename: str):
-    with open(filename) as config_file:
+    with fileutils.open_resource(filename) as config_file:
         config = yaml.safe_load(config_file)
         volume = config['volume']
         control = config['control']
@@ -45,6 +46,7 @@ listener: KeybindListener
 def active_app_volume_change(delta: float):
     updated_volume = volumeutils.change_active_window_volume(delta)
     # print('Updated volume: ' + str(updated_volume))
+    # TODO: When at max volume, bar shows empty
     if updated_volume is not None:
         volume_bar.set_percentage(round(updated_volume * 100))
         gui_app.processEvents()
@@ -66,6 +68,12 @@ def startup_keybind_listener():
     global listener
     up_binding = load_keybind_from_file(volume_up_keybind_file)
     down_binding = load_keybind_from_file(volume_down_keybind_file)
+
+    if up_binding is None:
+        up_binding = DEFAULT_UP_BINDING
+    if down_binding is None:
+        down_binding = DEFAULT_DOWN_BINDING
+
     volume_up_binding = FunctionBinding(up_binding, active_app_volume_up)
     volume_down_binding = FunctionBinding(down_binding, active_app_volume_down)
 
@@ -97,16 +105,16 @@ options_menu = ui.OptionsWindow(
 )
 
 tray = QSystemTrayIcon()
-tray_icon = QIcon("volume_white.png")
+tray_icon = QIcon(fileutils.get_full_resource_path('volume_white.png'))
 tray.setIcon(tray_icon)
 tray.setVisible(True)
 
 menu = QMenu()
-open_action = QAction("Open")
+open_action = QAction('Open')
 open_action.triggered.connect(options_menu.show)
 menu.addAction(open_action)
 
-quit_action = QAction("Quit")
+quit_action = QAction('Quit')
 quit_action.triggered.connect(gui_app.quit)
 menu.addAction(quit_action)
 
