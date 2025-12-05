@@ -1,0 +1,1 @@
+pyinstaller --icon volume_white.png --add-data="config.yml:." --add-data="volume_white.png:." --noconfirm main.py

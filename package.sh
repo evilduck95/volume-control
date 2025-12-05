@@ -1,0 +1,1 @@
+rm volume-controller.deb && sudo apt remove -y volume-controller && dpkg --build volume-controller/ && sudo dpkg -i volume-controller.deb
