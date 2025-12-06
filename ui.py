@@ -1,4 +1,5 @@
 import math
+import threading
 import time
 from typing import Callable
 
@@ -175,20 +176,22 @@ class VolumeBar(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setLayout(layout)
-        # self.hide_thread = threading.Thread(target=self._hide_listener, daemon=True)
-        # self.hide_thread.start()
+        self.hide_thread = threading.Thread(target=self._hide_listener, daemon=True)
+        self.hide_thread.start()
         self.show()
 
     def set_error(self, text: str):
         self.label.set_brush(QBrush(QColor("lightcoral")))
         self.label.setText(text)
+        # self.show()
+        self._stamp_update_time()
 
     def set_percentage(self, value: int, text: str = ''):
         self.show()
         self._reset_style()
         self.label.setText(text)
         self.progress_bar.setValue(value)
-        self.last_update_stamp = time.time()
+        self._stamp_update_time()
 
     def _add_shadow(self, item: QWidget):
         effect = QGraphicsDropShadowEffect()
@@ -200,6 +203,9 @@ class VolumeBar(QWidget):
     def _reset_style(self):
         self.label.set_brush(QBrush(QColor("white")))
         self.label.clear()
+
+    def _stamp_update_time(self):
+        self.last_update_stamp = time.time()
 
     def _hide_listener(self):
         while True:

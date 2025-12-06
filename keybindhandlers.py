@@ -365,7 +365,6 @@ class KeybindListener:
     def _check_and_activate_keybind(self, scroll=None):
         for function_binding in self.function_bindings:
             if function_binding.binding.is_activated(self.keys_pressed, scroll):
-                print('Keybind activated')
                 function_binding.callback()
                 return
 
@@ -381,7 +380,7 @@ class KeybindListener:
         print(f'Released: {key}\n')
         if key in self.keys_pressed:
             self.keys_pressed.remove(key)
-        else:
+        elif len(self.keys_pressed) == 1:
             self.alert_callback(f'Please re-press keys')
             print(f'Unknown key: {key} lifted, releasing all modifiers')
             self.keys_pressed.clear()
