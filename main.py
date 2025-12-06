@@ -11,6 +11,8 @@ import volumeutils
 from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_DOWN_BINDING, FunctionBinding, \
     KeybindListener
 
+config_filename = 'config.yml'
+
 
 def load_configs(filename: str):
     with fileutils.open_resource(filename) as config_file:
@@ -21,6 +23,16 @@ def load_configs(filename: str):
     return volume, control, ui
 
 
+def update_volume_config(tick_value: float):
+    with fileutils.open_resource(config_filename) as config_file:
+        config = yaml.safe_load(config_file)
+        config['volume']['delta'] = tick_value
+    with fileutils.open_resource(config_filename, "w") as config_file:
+        yaml.safe_dump(config, config_file)
+        print(f'Update volume tick to: {config["volume"]["delta"]}')
+    refresh_config()
+
+
 # Constants
 idle_time = 3
 
@@ -28,7 +40,13 @@ idle_time = 3
 modifier_key = keyboard.Key.shift
 modifier_key_pressed = False
 terminate_application = False
-(volume_config, control_config, ui_config) = load_configs('config.yml')
+(volume_config, control_config, ui_config) = load_configs(config_filename)
+
+
+def refresh_config():
+    global volume_config, control_config, ui_config
+    (volume_config, control_config, ui_config) = load_configs(config_filename)
+
 
 # Bindings
 volume_up_keybind_file = 'volume_up.kbd'
@@ -97,14 +115,16 @@ startup_keybind_listener()
 # GUI Setup
 gui_app = QApplication(sys.argv)
 gui_app.setQuitOnLastWindowClosed(False)
-volume_bar = ui.VolumeBar(2)
-# volume_bar.hide()
+volume_bar = ui.VolumeBar(10)
+volume_bar.hide()
 options_menu = ui.OptionsWindow(
     volume_up_keybind_file,
     volume_down_keybind_file,
     initial_up_binding,
     initial_down_binding,
-    restart_keybind_listener
+    restart_listeners_callback=restart_keybind_listener,
+    volume_tick_change_callback=update_volume_config,
+    volume_tick=int(float(volume_config['delta']) * 100)
 )
 
 tray = QSystemTrayIcon()

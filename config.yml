@@ -1,6 +1,6 @@
-volume:
-  delta: 0.05
 control:
   target: current_application
 ui:
   empty: none
+volume:
+  delta: 0.05

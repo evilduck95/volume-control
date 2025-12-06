@@ -4,9 +4,9 @@ import time
 from typing import Callable
 
 import screeninfo
-from PyQt6.QtWidgets import *
 from PyQt6.QtCore import *
 from PyQt6.QtGui import *
+from PyQt6.QtWidgets import *
 from pynput.keyboard import KeyCode, Key
 
 from keybindhandlers import KeybindCollector, get_virtual_key_code, SavedKeybind
@@ -27,6 +27,29 @@ QProgressBar {
 }
 QProgressBar::chunk {
     background-color: red;
+}
+"""
+
+SLIDER_STYLE_DEFAULT = """
+.QSlider {
+    min-height: 68px;
+    max-height: 68px;
+    background: #5F4141;
+}
+
+.QSlider::groove:horizontal {
+    border: 1px solid #262626;
+    height: 5px;
+    background: #393939;
+    margin: 0 12px;
+}
+
+.QSlider::handle:horizontal {
+    background: unset;
+    border: 5px solid #B5E61D;
+    width: 23px;
+    height: 100px;
+    margin: -24px -12px;
 }
 """
 
@@ -180,10 +203,14 @@ class VolumeBar(QWidget):
         self.hide_thread.start()
         self.show()
 
+    # Make the window clear itself in 3/4s of a second when the mouse is over the window
+    def enterEvent(self, event):
+        self.last_update_stamp = self.hide_timeout - .75
+
     def set_error(self, text: str):
         self.label.set_brush(QBrush(QColor("lightcoral")))
         self.label.setText(text)
-        # self.show()
+        # self.show() Requires a better keyboard event library
         self._stamp_update_time()
 
     def set_percentage(self, value: int, text: str = ''):
@@ -216,24 +243,28 @@ class VolumeBar(QWidget):
 
 class VolumeTickSelector(QWidget):
 
-    def __init__(self, starting_value=10):
+    def __init__(self, change_callback: Callable, starting_value=10):
         super().__init__()
         layout = QFormLayout()
-        self.slider_value_label = QLabel(f'Volume Change Interval: {starting_value}')
+        self.slider_value_label = QLabel()
+        self.update_value(starting_value)
         layout.addRow(self.slider_value_label)
 
         self.slider = QSlider(Qt.Orientation.Horizontal)
         self.slider.setTickPosition(QSlider.TickPosition.TicksAbove)
-        self.slider.setRange(1, 100)
+        self.slider.setRange(1, 50)
         self.slider.setValue(starting_value)
         self.slider.setSingleStep(1)
+        self.slider.setTickInterval(5)
+        # self.slider.setStyleSheet(SLIDER_STYLE_DEFAULT)
         self.slider.valueChanged.connect(self.update_value)
+        self.slider.sliderReleased.connect(lambda: change_callback(self.slider.value() / 100))
 
         layout.addRow(self.slider)
         self.setLayout(layout)
 
     def update_value(self, value):
-        self.slider_value_label.setText(f'Volume Change Interval: {value}')
+        self.slider_value_label.setText(f'Volume Change/Tick: {value}%')
 
 
 class ClickableLineEdit(QLineEdit):
@@ -296,12 +327,16 @@ class OptionsWindow(QWidget):
                  volume_down_keybind_file: str,
                  volume_up_binding: SavedKeybind,
                  volume_down_binding: SavedKeybind,
-                 restart_listeners_callback: Callable):
+                 restart_listeners_callback: Callable,
+                 volume_tick_change_callback: Callable,
+                 volume_tick: int):
         super().__init__()
         self.setWindowTitle('Options')
         self.setAutoFillBackground(False)
+        self.setMinimumWidth(300)
         layout = QFormLayout()
-        self.volume_tick_selector = VolumeTickSelector()
+        self.volume_tick_selector = VolumeTickSelector(change_callback=volume_tick_change_callback,
+                                                       starting_value=volume_tick)
         layout.addRow(self.volume_tick_selector)
         self.volume_up_keybind_input = KeybindSetter(
             'Volume Up',
