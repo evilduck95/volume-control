@@ -26,7 +26,7 @@ def change_sink_input_volume(pulse: pulsectl.Pulse,
     return updated_volume
 
 
-def change_active_window_volume(change: float) -> float:
+def change_active_window_volume(change: float) -> [float, str]:
     global last_controlled_media
     active_pid = windowutils.get_active_window_pid()
     with pulsectl.Pulse('volume-manager') as pulse:
@@ -40,4 +40,4 @@ def change_active_window_volume(change: float) -> float:
                 if media_name != last_controlled_media:
                     last_controlled_media = media_name
                     print('Media: ' + media_name)
-                return change_sink_input_volume(pulse, sink_input, change)
+                return change_sink_input_volume(pulse, sink_input, change), media_name

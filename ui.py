@@ -1,19 +1,31 @@
-import threading
+import math
 import time
 from typing import Callable
 
 import screeninfo
-from PyQt6.QtCore import Qt, QRect, pyqtSignal, QThread
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QProgressBar, QLabel, QSlider, QFormLayout, QLineEdit
+from PyQt6.QtWidgets import *
+from PyQt6.QtCore import *
+from PyQt6.QtGui import *
 from pynput.keyboard import KeyCode, Key
 
 from keybindhandlers import KeybindCollector, get_virtual_key_code, SavedKeybind
 
-PROGRESS_BAR_STYLE = """
+PROGRESS_BAR_STYLE_DEFAULT = """
 QProgressBar {
     border: 2px dashed grey;
     border-radius: 0;
     text-align: center;
+}
+"""
+
+PROGRESS_BAR_ERROR_STYLE = """
+QProgressBar {
+    border: 2px dashed grey;
+    border-radius: 0;
+    text-align: center;
+}
+QProgressBar::chunk {
+    background-color: red;
 }
 """
 
@@ -52,6 +64,92 @@ def get_primary_monitor():
     return 0
 
 
+# Credit to: https://stackoverflow.com/questions/64290561/qlabel-correct-positioning-for-text-outline
+class OutlinedLabel(QLabel):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.stroke_thickness = 1 / 25
+        self.stroke_mode = False
+        q_brush = QBrush(QColor("white"))
+        q_brush.setStyle(Qt.BrushStyle.SolidPattern)
+        self.set_brush(q_brush)
+        self.set_pen(QPen(QColor("black")))
+
+    def scaled_outline_mode(self):
+        return self.stroke_mode
+
+    def set_scaled_outline_mode(self, mode):
+        self.stroke_mode = mode
+
+    def outline_thickness(self):
+        return self.stroke_thickness * self.font().pointSize() if self.stroke_mode else self.stroke_thickness
+
+    def set_outline_thickness(self, thickness):
+        self.stroke_thickness = thickness
+
+    def set_brush(self, brush):
+        if not isinstance(brush, QBrush):
+            brush = QBrush(brush)
+        self.brush = brush
+
+    def set_pen(self, pen):
+        if not isinstance(pen, QPen):
+            pen = QPen(pen)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        self.pen = pen
+
+    def sizeHint(self):
+        w = math.ceil(self.outline_thickness() * 2)
+        return super().sizeHint() + QSize(w, w)
+
+    def minimumSizeHint(self):
+        w = math.ceil(self.outline_thickness() * 2)
+        return super().minimumSizeHint() + QSize(w, w)
+
+    def paintEvent(self, event):
+        stroke_width = self.outline_thickness()
+        rect = self.rect()
+        metrics = QFontMetricsF(self.font())
+        tr = metrics.boundingRect(self.text()).adjusted(0, 0, stroke_width, stroke_width)
+
+        # Indentation
+        if self.indent() == -1:
+            if self.frameWidth():
+                indentation = (metrics.boundingRect('x').width() + stroke_width * 2) / 2
+            else:
+                indentation = stroke_width
+        else:
+            indentation = self.indent()
+
+        # Horizontal Alignment
+        if self.alignment() & Qt.AlignmentFlag.AlignLeft:
+            path_start_x = rect.left() + indentation - min(metrics.leftBearing(self.text()[0]), 0)
+        elif self.alignment() & Qt.AlignmentFlag.AlignRight:
+            path_start_x = rect.x() + rect.width() - indentation - tr.width()
+        else:
+            path_start_x = (rect.width() - tr.width()) / 2
+
+        # Vertical Alignment
+        if self.alignment() & Qt.AlignmentFlag.AlignTop:
+            path_start_y = rect.top() + indentation + metrics.ascent()
+        elif self.alignment() & Qt.AlignmentFlag.AlignBottom:
+            path_start_y = rect.y() + rect.height() - indentation - metrics.descent()
+        else:
+            path_start_y = (rect.height() + metrics.ascent() - metrics.descent()) / 2
+
+        path = QPainterPath()
+        path.addText(path_start_x, path_start_y, self.font(), self.text())
+        qp = QPainter(self, )
+        qp.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        self.pen.setWidth(int(stroke_width))
+        qp.strokePath(path, self.pen)
+        if 1 < self.brush.style().value < 15:
+            qp.fillPath(path, self.palette().window())
+        qp.fillPath(path, self.brush)
+
+
 class VolumeBar(QWidget):
 
     def __init__(self, hide_timeout, monitor_index=0, bar_width=400, bar_height=100):
@@ -60,12 +158,15 @@ class VolumeBar(QWidget):
         self.monitor_index = monitor_index
         self.last_update_stamp = 0
         layout = QVBoxLayout()
-        self.label = QLabel("Volume Bar")
+        self.label = OutlinedLabel("Volume Bar")
+        self.label.set_brush(QBrush(QColor("white")))
+        self.label.setStyleSheet("font-size: 20pt; font-family: Monaco;")
+        self.label.set_outline_thickness(2)
         layout.addWidget(self.label)
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setTextVisible(False)
         self.progress_bar.setValue(0)
-        self.progress_bar.setStyleSheet(PROGRESS_BAR_STYLE)
+        self.progress_bar.setStyleSheet(PROGRESS_BAR_STYLE_DEFAULT)
         layout.addWidget(self.progress_bar)
         self.setGeometry(get_monitor_center(monitor_index, bar_width, bar_height))
         self.setWindowFlags(self.windowFlags() | Qt.WindowType.WindowStaysOnTopHint)
@@ -74,14 +175,31 @@ class VolumeBar(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self.setLayout(layout)
-        self.hide_thread = threading.Thread(target=self._hide_listener, daemon=True)
-        self.hide_thread.start()
+        # self.hide_thread = threading.Thread(target=self._hide_listener, daemon=True)
+        # self.hide_thread.start()
         self.show()
 
-    def set_percentage(self, value: int):
+    def set_error(self, text: str):
+        self.label.set_brush(QBrush(QColor("lightcoral")))
+        self.label.setText(text)
+
+    def set_percentage(self, value: int, text: str = ''):
         self.show()
+        self._reset_style()
+        self.label.setText(text)
         self.progress_bar.setValue(value)
         self.last_update_stamp = time.time()
+
+    def _add_shadow(self, item: QWidget):
+        effect = QGraphicsDropShadowEffect()
+        effect.setBlurRadius(2)
+        effect.setColor(QColor("black"))
+        effect.setOffset(2, 2)
+        item.setGraphicsEffect(effect)
+
+    def _reset_style(self):
+        self.label.set_brush(QBrush(QColor("white")))
+        self.label.clear()
 
     def _hide_listener(self):
         while True:

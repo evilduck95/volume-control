@@ -344,7 +344,7 @@ class KeybindCollector:
 
 class KeybindListener:
 
-    def __init__(self, function_bindings: list[FunctionBinding]):
+    def __init__(self, function_bindings: list[FunctionBinding], alert_callback: Callable[[str], None]=noop):
         self.function_bindings = function_bindings
         self.keys_pressed: set[Key | KeyCode] = set()
         self.keyboard_listener: keyboard.Listener = keyboard.Listener(
@@ -356,6 +356,7 @@ class KeybindListener:
             on_scroll=self._mouse_scrolled,
             on_click=self._mouse_clicked,
             daemon=True)
+        self.alert_callback = alert_callback
         for binding in [fb.binding for fb in function_bindings]:
             if hasattr(binding, 'saved_modifiers'):
                 print(f'Loaded keybind: {binding.saved_modifiers}, {binding.saved_bound_key}, {binding.bound_scroll}')
@@ -381,13 +382,13 @@ class KeybindListener:
         if key in self.keys_pressed:
             self.keys_pressed.remove(key)
         else:
-            # TODO: Need to notify the user of when this happens until I get a better Keyboard listener library
+            self.alert_callback(f'Please re-press keys')
             print(f'Unknown key: {key} lifted, releasing all modifiers')
             self.keys_pressed.clear()
 
     def _mouse_scrolled(self, _x, _y, _dx, dy):
         mouse_scroll = ScrollAction.DOWN if dy < 0 else ScrollAction.UP
-        print(f'Mouse Scrolled: {mouse_scroll}, {dy}')
+        # print(f'Mouse Scrolled: {mouse_scroll}, {dy}')
         self._check_and_activate_keybind(mouse_scroll)
 
     def _mouse_clicked(self, _x, _y, button, pressed):

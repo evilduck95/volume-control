@@ -4,7 +4,6 @@ from collections.abc import Callable
 
 
 class DelayedAction:
-
     _min_delay: float = -1
     _start_time: float = 0
     _action: Callable

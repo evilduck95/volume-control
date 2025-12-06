@@ -44,11 +44,11 @@ listener: KeybindListener
 
 
 def active_app_volume_change(delta: float):
-    updated_volume = volumeutils.change_active_window_volume(delta)
+    updated_volume, media_name = volumeutils.change_active_window_volume(delta)
     # print('Updated volume: ' + str(updated_volume))
     # TODO: When at max volume, bar shows empty
     if updated_volume is not None:
-        volume_bar.set_percentage(round(updated_volume * 100))
+        volume_bar.set_percentage(round(updated_volume * 100), media_name)
         gui_app.processEvents()
 
 
@@ -62,6 +62,10 @@ def active_app_volume_down():
     print('Vol DOWN')
     delta = float(volume_config['delta'])
     active_app_volume_change(-delta)
+
+
+def volume_bar_alert(text: str):
+    volume_bar.set_error(text)
 
 
 def startup_keybind_listener():
@@ -80,7 +84,7 @@ def startup_keybind_listener():
     listener = KeybindListener([
         volume_up_binding,
         volume_down_binding
-    ])
+    ], volume_bar_alert)
     listener.start()
 
 
@@ -95,7 +99,7 @@ startup_keybind_listener()
 gui_app = QApplication(sys.argv)
 gui_app.setQuitOnLastWindowClosed(False)
 volume_bar = ui.VolumeBar(2)
-volume_bar.hide()
+# volume_bar.hide()
 options_menu = ui.OptionsWindow(
     volume_up_keybind_file,
     volume_down_keybind_file,
