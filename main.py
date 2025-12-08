@@ -10,6 +10,7 @@ import ui
 import volumeutils
 from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_DOWN_BINDING, FunctionBinding, \
     KeybindListener
+import keybindhandlersv2 as kb2
 
 config_filename = 'config.yml'
 
@@ -112,6 +113,11 @@ def startup_keybind_listener():
         volume_down_binding
     ], volume_bar_alert)
     listener.start()
+
+def startup_keybind_listener_v2():
+    global listener_v2
+    up_bindings = kb2.load_bind('volume_up')
+    down_bindings = kb2.load_bind('volume_down')
 
 
 def restart_keybind_listener():

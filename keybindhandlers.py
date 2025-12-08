@@ -10,18 +10,11 @@ import fileutils
 import keybindutils
 from customthreading import ReturningThread
 
-noop = lambda *a, **k: None
-
-
-def compare_non_null(a, b):
-    return a is not None and a == b
 
 
 class ScrollAction(Enum):
     UP = '<ScrollUp>'
-
     DOWN = '<ScrollDown>'
-
     NONE = '<None>'
 
     @staticmethod
@@ -50,9 +43,9 @@ class Binding:
 
         # Internal State
         self.__key_codes_missing: bool = (
-                    any(keybindutils.get_virtual_key_code(key) in [None, 0] for key in modifier_keys) or
-                    bound_key is None or
-                    keybindutils.get_virtual_key_code(bound_key) in [None, 0])
+                any(keybindutils.get_virtual_key_code(key) in [None, 0] for key in modifier_keys) or
+                bound_key is None or
+                keybindutils.get_virtual_key_code(bound_key) in [None, 0])
 
     def is_activated(self, keys_pressed: set[Key | KeyCode | Button], scroll_action=None):
         # Check if all of our wanted modifiers are a part of the set of pressed keys
@@ -124,7 +117,7 @@ class SavedKeybind(Binding):
                  bound_scroll: [ScrollAction] = ScrollAction.NONE):
         raw_bound_key: [KeyCode | None] = None
         if bound_key is not None:
-            raw_bound_key = KeyCode(vk=bound_key.vk, char=bound_key.name)
+            raw_bound_key = KeyCode(vk=bound_key.code, char=bound_key.name)
         super().__init__(
             set([KeyCode.from_vk(key.vk) for key in modifier_keys]),
             raw_bound_key,
