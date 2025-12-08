@@ -1,6 +1,7 @@
 import math
 import threading
 import time
+from functools import cached_property
 from typing import Callable
 
 import screeninfo
@@ -9,7 +10,9 @@ from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
 from pynput.keyboard import KeyCode, Key
 
-from keybindhandlers import KeybindCollector, get_virtual_key_code, SavedKeybind
+import keybindhandlersv2 as kb2
+import keybindutils
+from keybindhandlers import SavedKeybind
 
 PROGRESS_BAR_STYLE_DEFAULT = """
 QProgressBar {
@@ -57,7 +60,7 @@ SLIDER_STYLE_DEFAULT = """
 def get_key_name(key: Key | KeyCode):
     name = key.name if hasattr(key, 'name') else key.char
     if name is None:
-        return str(get_virtual_key_code(key))
+        return str(keybindutils.get_virtual_key_code(key))
     return name.capitalize()
 
 
@@ -280,44 +283,111 @@ class ClickableLineEdit(QLineEdit):
 class UserKeybindInputThread(QThread):
     keybind_changed = pyqtSignal(str)
 
-    def __init__(self, save_file: str):
-        self.save_file = save_file
+    def __init__(self, bind_name: str, bind_index: int):
+        self.bind_name = bind_name
+        self.bind_index = bind_index
+        self.saved_bind: kb2.BoundAction = kb2.load_bind(bind_name)
         QThread.__init__(self)
 
+    def _update_or_add_binding(self, binding: kb2.Binding):
+        if self.saved_bind is None:
+            saved_bindings = []
+        else:
+            saved_bindings = self.saved_bind.bindings
+        if len(saved_bindings) <= self.bind_index:
+            saved_bindings.append(binding)
+        else:
+            saved_bindings[self.bind_index] = binding
+        return saved_bindings.copy()
+
     def run(self):
-        collector = KeybindCollector()
+        collector = kb2.KeybindCollector()
         binding = collector.collect_keybind()
-        print(f'Modifier: {binding.modifiers}, Key: {binding.bound_key}, Scroll: {binding.bound_scroll}')
-        collector.save_keybind(self.save_file)
-        keybind_string = pretty_binding_string(binding)
-        self.keybind_changed.emit(keybind_string)
+        print(f'Collected: {binding.keys}, {binding.mouse_action}')
+        updated_bindings = self._update_or_add_binding(binding)
+        updated_bound_action = kb2.BoundAction(bindings=updated_bindings, name=self.bind_name)
+        kb2.save_bind(updated_bound_action)
+        self.keybind_changed.emit(str(binding))
 
 
 class KeybindSetter(QWidget):
 
-    def __init__(self, label: str, save_file: str, current_binding: SavedKeybind, after_set_callback: Callable):
+    def __init__(self, bind_name: str, bind_index: int, after_set_callback: Callable, label: str = None):
         super().__init__()
-        self.save_file = save_file
-        layout = QFormLayout()
-        self.label = QLabel(label)
-        layout.addRow(self.label)
-        self.keybind_input = ClickableLineEdit(pretty_binding_string(current_binding))
+        self.bind_name = bind_name
+        self.bind_index = bind_index
+        layout = QVBoxLayout()
+        if label is not None:
+            self.label = QLabel(label)
+            layout.addWidget(self.label)
+        current_bound_action: kb2.BoundAction = kb2.load_bind(bind_name)
+        if current_bound_action is not None and len(current_bound_action.bindings) > bind_index:
+            display_text = str(current_bound_action.bindings[bind_index])
+        else:
+            display_text = 'Press to set keybind...'
+        bottom_row = QHBoxLayout()
+        layout.addLayout(bottom_row)
+        self.keybind_input = ClickableLineEdit(display_text)
         self.keybind_input.resize(250, 40)
+        self.keybind_input.setReadOnly(True)
+        self.keybind_input.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.keybind_input.clicked.connect(self._clicked)
-        layout.addRow(self.keybind_input)
+        bottom_row.addWidget(self.keybind_input)
+        remove_button = QPushButton('-')
+        bottom_row.addWidget(remove_button, alignment=Qt.AlignmentFlag.AlignBottom)
+        bottom_row.setSpacing(0)
         self.setLayout(layout)
         self.after_set_callback = after_set_callback
+
 
     def _update_keybind_text(self, text):
         self.keybind_input.setText(text)
 
     def _clicked(self):
         self.keybind_input.setText('Press keybind...')
-        # threading.Thread(target=self._collect_keybind_from_user).start()
-        self.keybind_collector = UserKeybindInputThread(self.save_file)
+        self.keybind_collector = UserKeybindInputThread(self.bind_name, self.bind_index)
         self.keybind_collector.keybind_changed.connect(self._update_keybind_text)
         self.keybind_collector.keybind_changed.connect(self.after_set_callback)
         self.keybind_collector.start()
+
+
+class ExtendableKeybindSetterList(QWidget):
+
+    def __init__(self, label: str, bind_name: str, after_set_callback: Callable):
+        super().__init__()
+        self.bind_name = bind_name
+        self.inputs = []
+        self.after_set_callback = after_set_callback
+        bound_action: kb2.BoundAction = kb2.load_bind(bind_name)
+        num_of_bindings = len(bound_action.bindings)
+        for i in range(num_of_bindings):
+            self.inputs.append(
+                KeybindSetter(bind_name, i, self._after_new_row_set, label if i == 0 else None)
+            )
+        layout = QVBoxLayout()
+        for widget in self.inputs:
+            self._stacked_widget.addWidget(widget)
+        layout.addLayout(self._stacked_widget)
+        self.add_row_button = QPushButton('Add another keybind')
+        self.add_row_button.setFixedWidth(245)
+        self.add_row_button.clicked.connect(self._add_row)
+        layout.addWidget(self.add_row_button, alignment=Qt.AlignmentFlag.AlignHCenter)
+        layout.setSpacing(0)
+        self.setLayout(layout)
+
+    @cached_property
+    def _stacked_widget(self):
+        return QVBoxLayout()
+
+    def _after_new_row_set(self):
+        self.add_row_button.show()
+        self.after_set_callback()
+
+    def _add_row(self):
+        self._stacked_widget.addWidget(
+            KeybindSetter(self.bind_name, self._stacked_widget.count(), self._after_new_row_set)
+        )
+        self.add_row_button.hide()
 
 
 class OptionsWindow(QWidget):
@@ -325,8 +395,6 @@ class OptionsWindow(QWidget):
     def __init__(self,
                  volume_up_keybind_file: str,
                  volume_down_keybind_file: str,
-                 volume_up_binding: SavedKeybind,
-                 volume_down_binding: SavedKeybind,
                  restart_listeners_callback: Callable,
                  volume_tick_change_callback: Callable,
                  volume_tick: int):
@@ -338,17 +406,23 @@ class OptionsWindow(QWidget):
         self.volume_tick_selector = VolumeTickSelector(change_callback=volume_tick_change_callback,
                                                        starting_value=volume_tick)
         layout.addRow(self.volume_tick_selector)
-        self.volume_up_keybind_input = KeybindSetter(
-            'Volume Up',
-            volume_up_keybind_file,
-            volume_up_binding,
-            restart_listeners_callback)
-        layout.addRow(self.volume_up_keybind_input)
-        self.volume_down_keybind_input = KeybindSetter(
-            'Volume Down',
-            volume_down_keybind_file,
-            volume_down_binding,
-            restart_listeners_callback)
-        layout.addRow(self.volume_down_keybind_input)
+        volume_up_inputs = ExtendableKeybindSetterList('Volume Up', volume_up_keybind_file, restart_listeners_callback)
+        layout.addRow(volume_up_inputs)
+        # self.volume_up_inputs = [
+        #     KeybindSetter(
+        #         volume_up_keybind_file,
+        #         0,
+        #         restart_listeners_callback,
+        #         'Volume Up')
+        # ]
+        # self.volume_down_inputs = [
+        #     KeybindSetter(
+        #         volume_down_keybind_file,
+        #         0,
+        #         restart_listeners_callback,
+        #         'Volume Down')
+        # ]
+        # for input_widget in [*self.volume_up_inputs, *self.volume_down_inputs]:
+        #     layout.addRow(input_widget)
         self.setLayout(layout)
         self.setGeometry(get_monitor_center(get_primary_monitor(), 100, 100))

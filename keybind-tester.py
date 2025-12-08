@@ -1,28 +1,18 @@
-import pynput as pyin
-from pynput.keyboard import KeyCode, Key, Controller
+class Thing:
 
-keyboard = Controller()
+    def __init__(self, a, b):
+        self.a = a
+        self.b = b
 
-
-def key_pressed(event: Key | KeyCode):
-    print(f'Pressed: {event}')
-    if event == Key.esc:
-        keyboard.press(Key.shift)
-        keyboard.press(Key.alt)
-        keyboard.release(Key.shift)
-        keyboard.release(Key.alt)
+    def __str__(self):
+        return f'thing: a={self.a}, b={self.b}'
 
 
-def key_released(event):
-    print(f'Released: {event}')
+thing = Thing(1, 2)
 
+print(str(thing))
 
-def mouse_pressed(x, y, button, pressed):
-    print(f'Pressed: {button}')
+x = []
+x[2] = 'blah'
 
-
-with pyin.mouse.Listener(on_click=mouse_pressed) as l:
-    l.join()
-
-with pyin.keyboard.Listener(on_press=key_pressed, on_release=key_released, suppress=True) as l:
-    l.join()
+print(x)

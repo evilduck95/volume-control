@@ -7,9 +7,9 @@ from pynput.keyboard import KeyCode, Key
 from pynput.mouse import Button
 
 import fileutils
+import generalutils
 import keybindutils
 from customthreading import ReturningThread
-
 
 
 class ScrollAction(Enum):
@@ -266,7 +266,8 @@ class KeybindCollector:
 
 class KeybindListener:
 
-    def __init__(self, function_bindings: list[FunctionBinding], alert_callback: Callable[[str], None] = noop):
+    def __init__(self, function_bindings: list[FunctionBinding],
+                 alert_callback: Callable[[str], None] = generalutils.noop_func):
         self.function_bindings = function_bindings
         self.keys_pressed: set[Key | KeyCode] = set()
         self.keyboard_listener: keyboard.Listener = keyboard.Listener(

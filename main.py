@@ -6,11 +6,11 @@ from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from pynput import keyboard
 
 import fileutils
+import keybindhandlersv2 as kb2
 import ui
 import volumeutils
 from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_DOWN_BINDING, FunctionBinding, \
     KeybindListener
-import keybindhandlersv2 as kb2
 
 config_filename = 'config.yml'
 
@@ -50,11 +50,11 @@ def refresh_config():
 
 
 # Bindings
-volume_up_keybind_file = 'volume_up.kbd'
-volume_down_keybind_file = 'volume_down.kbd'
+volume_up_keybind_name = 'volume_up.kbd'
+volume_down_keybind_name = 'volume_down.kbd'
 
-saved_up_binding = load_keybind_from_file(volume_up_keybind_file)
-saved_down_binding = load_keybind_from_file(volume_down_keybind_file)
+saved_up_binding = load_keybind_from_file(volume_up_keybind_name)
+saved_down_binding = load_keybind_from_file(volume_down_keybind_name)
 
 initial_up_binding = DEFAULT_UP_BINDING if saved_up_binding is None else saved_up_binding
 initial_down_binding = DEFAULT_DOWN_BINDING if saved_down_binding is None else saved_down_binding
@@ -97,8 +97,8 @@ def volume_bar_alert(text: str):
 
 def startup_keybind_listener():
     global listener
-    up_binding = load_keybind_from_file(volume_up_keybind_file)
-    down_binding = load_keybind_from_file(volume_down_keybind_file)
+    up_binding = load_keybind_from_file(volume_up_keybind_name)
+    down_binding = load_keybind_from_file(volume_down_keybind_name)
 
     if up_binding is None:
         up_binding = DEFAULT_UP_BINDING
@@ -114,10 +114,12 @@ def startup_keybind_listener():
     ], volume_bar_alert)
     listener.start()
 
+
 def startup_keybind_listener_v2():
     global listener_v2
     up_bindings = kb2.load_bind('volume_up')
     down_bindings = kb2.load_bind('volume_down')
+
 
 
 def restart_keybind_listener():
@@ -137,10 +139,8 @@ gui_app.setQuitOnLastWindowClosed(False)
 volume_bar = ui.VolumeBar(10)
 volume_bar.hide()
 options_menu = ui.OptionsWindow(
-    volume_up_keybind_file,
-    volume_down_keybind_file,
-    initial_up_binding,
-    initial_down_binding,
+    volume_up_keybind_name,
+    volume_down_keybind_name,
     restart_listeners_callback=restart_keybind_listener,
     volume_tick_change_callback=update_volume_config,
     volume_tick=int(float(volume_config['delta']) * 100)

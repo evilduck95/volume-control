@@ -1,8 +1,9 @@
 import pickle
-import typing
+import time
+from enum import Enum
 from typing import Callable
 
-from pynput import keyboard
+from pynput import keyboard, mouse
 from pynput.keyboard import KeyCode, Key
 from pynput.mouse import Button
 
@@ -59,34 +60,72 @@ class SerializableKey:
         return self.__is_modifier
 
 
-class SerializableButton(SerializableKey):
+class SerializableMouseButton(SerializableKey):
 
     def __init__(self, code: int, name: str):
         super().__init__(code, name, False)
 
 
+class Scroll(Enum):
+    DOWN = 'WheelDown'
+    UP = 'WheelUp'
+
+
+class SerializableMouseAction:
+
+    def __init__(self, button: [SerializableMouseButton | None] = None, scroll: [Scroll | None] = None):
+        self.__button = button
+        self.__scroll = scroll
+
+    @property
+    def button(self):
+        return self.__button
+
+    @property
+    def scroll(self):
+        return self.__scroll
+
+    def __str__(self):
+        print('str')
+        if self.button is None:
+            return f'Mouse{self.scroll.value}'
+        else:
+            return f'Mouse{self.button.name.capitalize()}'
+
+
 class Binding:
 
-    def __init__(self, keys: list[SerializableKey], mouse_button: [SerializableButton | None] = None):
+    def __init__(self, keys: list[SerializableKey], mouse_action: [SerializableMouseAction | None] = None):
         self.__keys = keys
         self.key_codes: set[int] = set([key.code for key in keys])
-        self.__mouse_button = mouse_button
+        self.__mouse_action: [SerializableMouseAction | None] = mouse_action
 
-    def is_active(self, keys_pressed: set[Key | KeyCode], mouse_button_pressed: [Button | None] = None):
+    def is_active(self, keys_pressed: set[Key | KeyCode], mouse_button_pressed: [Button | None] = None,
+                  scroll: [Scroll | None] = None):
         pressed_key_codes = keybindutils.convert_to_vks(keys_pressed)
         all_keys_pressed = pressed_key_codes == self.key_codes
-        if mouse_button_pressed is None:
+        if mouse_button_pressed is None and scroll is None:
             return all_keys_pressed
         else:
-            return all_keys_pressed and mouse_button_pressed.value == self.__mouse_button.code
+            mouse_action_done = (mouse_button_pressed.value == self.__mouse_action.button.code or
+                                 scroll == self.__mouse_action.scroll)
+            return all_keys_pressed and mouse_action_done
 
     @property
     def keys(self):
         return self.__keys
 
     @property
-    def mouse_button(self):
-        return self.__mouse_button
+    def mouse_action(self):
+        return self.__mouse_action
+
+    def __str__(self):
+        key_names = [key.name for key in self.keys]
+        keys_pressed_string = ' + '.join(key_names)
+        if self.mouse_action is None:
+            return keys_pressed_string
+        else:
+            return f'{keys_pressed_string} + {self.mouse_action}'
 
 
 class BoundAction:
@@ -126,29 +165,61 @@ class BoundAction:
 class KeybindCollector:
 
     def __init__(self):
-        self.key_listener = keyboard.Listener(on_press=self._key_pressed, suppress=True)
+        self.key_listener = keyboard.Listener(on_press=self._key_pressed, on_release=self._key_released, suppress=True)
+        self.mouse_listener = mouse.Listener(on_click=self._mouse_clicked, on_scroll=self._mouse_scrolled)
         self.modifiers_pressed: set[Key | KeyCode] = set()
-        self.terminal_key: [Key | KeyCode]
+        self.terminal_key: [Key | KeyCode] = None
+        self.terminal_mouse_action: [Button | Scroll] = None
+        self.keybind_complete = False
 
     def _key_pressed(self, key: [Key | KeyCode]):
         if not keybindutils.is_modifier_key(key):
             self.terminal_key = key
-            self.key_listener.stop()
+            self.keybind_complete = True
         else:
             self.modifiers_pressed.add(key)
 
     def _key_released(self, key: [Key | KeyCode]):
+        if self.keybind_complete:
+            return
         if key in self.modifiers_pressed:
             self.modifiers_pressed.remove(key)
         else:
             print(f'Unknown key: {key} released, cleared all keys')
             self.modifiers_pressed.clear()
 
+    def _mouse_clicked(self, _x, _y, button: Button, pressed):
+        if pressed and button not in [Button.left, Button.right]:
+            self.terminal_mouse_action = button
+            self.keybind_complete = True
+
+    def _mouse_scrolled(self, _x, _y, _dx, dy):
+        if dy > 0:
+            self.terminal_mouse_action = Scroll.UP
+        else:
+            self.terminal_mouse_action = Scroll.DOWN
+        self.keybind_complete = True
+
     def collect_keybind(self):
-        with self.key_listener as listener:
-            listener.join()
-        print(f'Collected\n Modifiers: {self.modifiers_pressed}, Terminator: {self.terminal_key}')
-        return self.modifiers_pressed, self.terminal_key
+        self.key_listener.start()
+        self.mouse_listener.start()
+        while not self.keybind_complete:
+            time.sleep(.1)
+        self.mouse_listener.stop()
+        self.key_listener.stop()
+        if self.terminal_mouse_action is not None:
+            if type(self.terminal_mouse_action) is Button:
+                mouse_action = SerializableMouseAction(button=self.terminal_mouse_action)
+            else:
+                mouse_action = SerializableMouseAction(scroll=self.terminal_mouse_action)
+        else:
+            mouse_action = None
+        all_keys = [*self.modifiers_pressed]
+        print(f'Collected\n Modifiers: {self.modifiers_pressed}, Terminator: {self.terminal_key}, Mouse: {self.terminal_mouse_action}')
+        if self.terminal_key is not None:
+            all_keys.append(self.terminal_key)
+        pressed_keys = [_convert_to_serializable_key(key) for key in all_keys]
+        return Binding(pressed_keys, mouse_action)
 
 
 class KeybindListener:
@@ -223,6 +294,6 @@ def load_bind(name: str):
 # print('Listening for keybinds')
 # listener = KeybindListener(bound_actions)
 # listener.start()
-#
-while True:
-    pass
+
+# while True:
+#     pass
