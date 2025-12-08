@@ -1,94 +1,20 @@
 import time
 from enum import Enum
-from typing import Iterable, Callable
+from typing import Callable
 
 from pynput import keyboard, mouse
 from pynput.keyboard import KeyCode, Key
 from pynput.mouse import Button
 
 import fileutils
+import keybindutils
 from customthreading import ReturningThread
-
-MODIFIER_KEYS = (
-    Key.ctrl_l,
-    Key.ctrl_r,
-    Key.ctrl,
-    Key.shift_l,
-    Key.shift_r,
-    Key.shift,
-    Key.alt_gr,
-    Key.alt_l,
-    Key.alt_r,
-    Key.alt,
-    Key.cmd_l,
-    Key.cmd_r,
-    Key.cmd,
-    Key.menu
-)
 
 noop = lambda *a, **k: None
 
 
-def get_virtual_key_code(key: Key | KeyCode | Button):
-    if type(key) is Button:
-        return key.value
-    else:
-        return key.vk if hasattr(key, 'vk') else key.value.vk
-
-
-def convert_to_vks(keys: Iterable[Key | KeyCode]):
-    return set([get_virtual_key_code(key) for key in keys])
-
-
-def get_key_name(key: Key | KeyCode):
-    name = key.name if hasattr(key, 'name') else key.char
-    return name.capitalize()
-
-
-def is_default_keybind(keys_pressed):
-    return {Key.shift, Key.ctrl}.issubset(keys_pressed)
-
-
-def key_is_mouse_button(key: [Key | KeyCode]) -> bool:
-    if type(key) is Button:
-        return True
-    else:
-        if hasattr(key, 'char') and key.char is not None:
-            return key.char.startswith('mouse')
-        else:
-            return False
-
-
-def stringify_key(key: Key | KeyCode | Button) -> str:
-    key_string: str
-    if type(key) is Button:
-        name = key.name
-        key_string = str(key.value) if name is None else name
-    else:
-        if hasattr(key, 'char'):
-            char = key.char
-            key_string = str(key.vk) if char is None else char
-        else:
-            key_name = key.name
-            key_string = str(key.value.vk) if key_name is None else key_name
-    return key_string
-
-
 def compare_non_null(a, b):
     return a is not None and a == b
-
-
-def are_same_keys(
-        key_a: [Key | KeyCode | Button],
-        key_b: [Key | KeyCode | Button]) -> bool:
-    # Both are Mouse Buttons
-    if type(key_a) is Button and type(key_b) is Button:
-        return compare_non_null(key_a.name, key_b.name) or compare_non_null(key_a.value, key_b.value)
-    else:
-        # Get virtual key to best of ability and compare the value
-        key_a_vk = key_a.vk if hasattr(key_a, 'vk') else key_a.value.vk
-        key_b_vk = key_b.vk if hasattr(key_b, 'vk') else key_b.value.vk
-        return compare_non_null(key_a_vk, key_b_vk)
 
 
 class ScrollAction(Enum):
@@ -116,20 +42,21 @@ class Binding:
         self.__bound_key: [Key | KeyCode] = bound_key
 
         # Key Codes only for logic
-        self.__modifier_codes: set[int] = convert_to_vks(modifier_keys)
-        self.__bound_key_code: int = get_virtual_key_code(bound_key) if bound_key is not None else None
+        self.__modifier_codes: set[int] = keybindutils.convert_to_vks(modifier_keys)
+        self.__bound_key_code: int = keybindutils.get_virtual_key_code(bound_key) if bound_key is not None else None
 
         # Scroll Value
         self.__bound_scroll: ScrollAction = bound_scroll
 
         # Internal State
-        self.__key_codes_missing: bool = (any(get_virtual_key_code(key) in [None, 0] for key in modifier_keys) or
-                                          bound_key is None or
-                                          get_virtual_key_code(bound_key) in [None, 0])
+        self.__key_codes_missing: bool = (
+                    any(keybindutils.get_virtual_key_code(key) in [None, 0] for key in modifier_keys) or
+                    bound_key is None or
+                    keybindutils.get_virtual_key_code(bound_key) in [None, 0])
 
     def is_activated(self, keys_pressed: set[Key | KeyCode | Button], scroll_action=None):
         # Check if all of our wanted modifiers are a part of the set of pressed keys
-        pressed_codes = convert_to_vks(keys_pressed)
+        pressed_codes = keybindutils.convert_to_vks(keys_pressed)
         modifiers_pressed = self.__modifier_codes.issubset(pressed_codes)
         # Check if we're using a mouse scroll wheel based bind
         action_binding_pressed: bool
@@ -144,7 +71,8 @@ class Binding:
         return self.__bound_scroll is not None
 
     def has_mouse_buttons(self):
-        return key_is_mouse_button(self.__bound_key) or any(key_is_mouse_button(k) for k in self.__modifier_keys)
+        return keybindutils.key_is_mouse_button(self.__bound_key) or any(
+            keybindutils.key_is_mouse_button(k) for k in self.__modifier_keys)
 
     @property
     def modifiers(self) -> set[Key | KeyCode]:
@@ -290,15 +218,15 @@ class KeybindCollector:
     def _on_press(self, key: Key | KeyCode):
         # print(f'Press: {key}')
         if not self.keybind_complete:
-            if key in MODIFIER_KEYS:
+            if keybindutils.is_modifier_key(key):
                 self.keybind_modifiers.add(key)
             else:
                 self.bound_key = key
-                self.keybind_complete = True
 
     def _on_release(self, key: Key | KeyCode):
         # print(f'Release: {key}')
-        self.keybind_modifiers.discard(key)
+        # self.keybind_modifiers.discard(key)
+        self.keybind_complete = True
 
     # TODO: This might make the keybind files juuuust a little bit clearer if we use it
     #  I haven't decided if I think it's worth it yet
@@ -330,13 +258,14 @@ class KeybindCollector:
         with fileutils.open_resource(filename, mode="w+") as file:
             file.write('modifiers\n')
             for key in self.keybind_modifiers:
-                file.write(f'{str(get_virtual_key_code(key))}:{stringify_key(key)}\n')
+                file.write(f'{str(keybindutils.get_virtual_key_code(key))}:{keybindutils.stringify_key(key)}\n')
             if self.bound_key is not None:
                 if type(self.bound_key) is Button:
                     file.write('mouse_button\n')
                 else:
                     file.write('key\n')
-                file.write(f'{str(get_virtual_key_code(self.bound_key))}:{stringify_key(self.bound_key)}')
+                file.write(
+                    f'{str(keybindutils.get_virtual_key_code(self.bound_key))}:{keybindutils.stringify_key(self.bound_key)}')
             elif self.bound_scroll is not None:
                 file.write('scroll\n')
                 file.write(str(self.bound_scroll.value))
@@ -344,7 +273,7 @@ class KeybindCollector:
 
 class KeybindListener:
 
-    def __init__(self, function_bindings: list[FunctionBinding], alert_callback: Callable[[str], None]=noop):
+    def __init__(self, function_bindings: list[FunctionBinding], alert_callback: Callable[[str], None] = noop):
         self.function_bindings = function_bindings
         self.keys_pressed: set[Key | KeyCode] = set()
         self.keyboard_listener: keyboard.Listener = keyboard.Listener(

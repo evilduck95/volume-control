@@ -29,7 +29,7 @@ def change_sink_input_volume(pulse: pulsectl.Pulse,
 def change_active_window_volume(change: float) -> [float, str]:
     global last_controlled_media
     active_pid = windowutils.get_active_window_pid()
-    with pulsectl.Pulse('volume-manager') as pulse:
+    with pulsectl.Pulse('focused-application-volume-editor') as pulse:
         for sink_input in pulse.sink_input_list():
             app_id = sink_input.proplist['application.process.id']
             # print('Next Sink Input: ' + str(app_id))
@@ -41,3 +41,11 @@ def change_active_window_volume(change: float) -> [float, str]:
                     last_controlled_media = media_name
                     print('Media: ' + media_name)
                 return change_sink_input_volume(pulse, sink_input, change), media_name
+
+
+def change_system_volume(change: float) -> [float]:
+    with pulsectl.Pulse('system-volume-editor') as pulse:
+        # Get Current Output Device (System volume sink)
+        default_sink = pulse.sink_default_get()
+        pulse.volume_change_all_chans(default_sink, change)
+        return pulse.volume_get_all_chans(default_sink), default_sink.description

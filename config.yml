@@ -1,6 +1,6 @@
 control:
-  target: current_application
+  target: system
 ui:
   empty: none
 volume:
-  delta: 0.05
+  delta: 0.1

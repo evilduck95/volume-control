@@ -61,24 +61,33 @@ initial_down_binding = DEFAULT_DOWN_BINDING if saved_down_binding is None else s
 listener: KeybindListener
 
 
-def active_app_volume_change(delta: float):
-    updated_volume, media_name = volumeutils.change_active_window_volume(delta)
+# Change the volume of a target. Not sure if more targets might be available in future (e.g. Comms only)
+def volume_change(delta: float):
+    control_target = control_config['target']
+    if control_target == 'current_application':
+        updated_volume, media_name = volumeutils.change_active_window_volume(delta)
+    elif control_target == 'system':
+        updated_volume, media_name = volumeutils.change_system_volume(delta)
+    else:
+        # TODO: What should we do?
+        #  Call itself again and provide a better config? Set the config in the file to a default? Nothing and break?
+        raise ValueError(f'Unknown Control Target Configuration: {control_target}')
     # print('Updated volume: ' + str(updated_volume))
     if updated_volume is not None:
         volume_bar.set_percentage(round(updated_volume * 100), media_name)
         gui_app.processEvents()
 
 
-def active_app_volume_up():
+def volume_up():
     print('Volume Up')
     delta = float(volume_config['delta'])
-    active_app_volume_change(delta)
+    volume_change(delta)
 
 
-def active_app_volume_down():
+def volume_down():
     print('Volume Down')
     delta = float(volume_config['delta'])
-    active_app_volume_change(-delta)
+    volume_change(-delta)
 
 
 def volume_bar_alert(text: str):
@@ -95,8 +104,8 @@ def startup_keybind_listener():
     if down_binding is None:
         down_binding = DEFAULT_DOWN_BINDING
 
-    volume_up_binding = FunctionBinding(up_binding, active_app_volume_up)
-    volume_down_binding = FunctionBinding(down_binding, active_app_volume_down)
+    volume_up_binding = FunctionBinding(up_binding, volume_up)
+    volume_down_binding = FunctionBinding(down_binding, volume_down)
 
     listener = KeybindListener([
         volume_up_binding,
@@ -108,6 +117,10 @@ def startup_keybind_listener():
 def restart_keybind_listener():
     listener.stop()
     startup_keybind_listener()
+
+
+def stop_keybind_listener():
+    listener.stop()
 
 
 startup_keybind_listener()
@@ -135,6 +148,7 @@ tray.setVisible(True)
 menu = QMenu()
 open_action = QAction('Open')
 open_action.triggered.connect(options_menu.show)
+open_action.triggered.connect(stop_keybind_listener)
 menu.addAction(open_action)
 
 quit_action = QAction('Quit')

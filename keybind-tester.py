@@ -1,50 +1,29 @@
-from pynput.keyboard import Key, Listener, KeyCode
-import sys
+import pynput as pyin
+from pynput.keyboard import KeyCode, Key, Controller
 
-print("\nPress Esc to exit\n")
-print(f'{"form":<10}{"char":<10}{"val":>4}{"code":>8}')
-print(f'{"----":<10}{"----":<10}{"---":>4}{"----":>8}')
-
-last_key = None
+keyboard = Controller()
 
 
-def on_press(key):
-    global last_key
-    if hasattr(key, 'char'):
-        form = "char"
-        char = key.char
-        if char is None:
-            char = val = ""
-        else:
-            val = ord(char)
-        code = key.vk
-        last_key = ""
-    else:
-        form = "other"
-        char = key.name
-        val = ""
-        code = key.value.vk
-    if last_key != key:
-        print(f"{form:<10}{char:<10}{val:>4}{code:>8}")
-    last_key = key
-    if key == Key.esc:
-        sys.exit()
+def key_pressed(event: Key | KeyCode):
+    print(f'Pressed: {event}')
+    if event == Key.esc:
+        keyboard.press(Key.shift)
+        keyboard.press(Key.alt)
+        keyboard.release(Key.shift)
+        keyboard.release(Key.alt)
 
 
-def _stringify_key(key: Key | KeyCode):
-    key_string: str
-    if hasattr(key, 'char'):
-        char = key.char
-        key_string = str(key.vk) if char is None else char
-    else:
-        key_name = key.name
-        key_string = key.value.vk if key_name is None else key_name
-    print(f'Key String: {key_string}')
+def key_released(event):
+    print(f'Released: {event}')
 
 
-def on_press_2(key):
-    _stringify_key(key)
+with pyin.keyboard.Listener(on_press=key_pressed, on_release=key_released, suppress=True) as l:
+    l.join()
 
-
-with Listener(on_press=on_press_2, suppress=True) as listener:
-    listener.join()
+# Something to try out
+# 1. Grab all keys pressed as normal until something is released
+# 2. Separate all known modifiers and keys with only a key code (Likely modifiers)
+# 3. Start listener for input
+# 4. Start input, press all modifiers in every combination
+# 5. Listen for what inputs we receive, for instance, alt+shift != shift+alt (shift+<meta-l code>)
+# 6. Reduce to distinct set of combinations
