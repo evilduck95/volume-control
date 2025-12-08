@@ -23,6 +23,10 @@ MODIFIER_KEYS = {
 }
 
 
+def _compare_non_null(a, b):
+    return a is not None and a == b
+
+
 def get_virtual_key_code(key: Key | KeyCode | Button):
     if type(key) is Button:
         return key.value
@@ -83,9 +87,9 @@ def are_same_keys(
         key_b: [Key | KeyCode | Button]) -> bool:
     # Both are Mouse Buttons
     if type(key_a) is Button and type(key_b) is Button:
-        return compare_non_null(key_a.name, key_b.name) or compare_non_null(key_a.value, key_b.value)
+        return _compare_non_null(key_a.name, key_b.name) or _compare_non_null(key_a.value, key_b.value)
     else:
         # Get virtual key to best of ability and compare the value
-        key_a_vk = key_a.vk if hasattr(key_a, 'vk') else key_a.value.vk
-        key_b_vk = key_b.vk if hasattr(key_b, 'vk') else key_b.value.vk
-        return compare_non_null(key_a_vk, key_b_vk)
+        key_a_vk = key_a.code if hasattr(key_a, 'vk') else key_a.value.code
+        key_b_vk = key_b.code if hasattr(key_b, 'vk') else key_b.value.code
+        return _compare_non_null(key_a_vk, key_b_vk)
