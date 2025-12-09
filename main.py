@@ -9,8 +9,7 @@ import fileutils
 import keybindhandlersv2 as kb2
 import ui
 import volumeutils
-from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_DOWN_BINDING, FunctionBinding, \
-    KeybindListener
+from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_DOWN_BINDING, KeybindListener
 
 config_filename = 'config.yml'
 
@@ -59,8 +58,6 @@ saved_down_binding = load_keybind_from_file(volume_down_keybind_name)
 initial_up_binding = DEFAULT_UP_BINDING if saved_up_binding is None else saved_up_binding
 initial_down_binding = DEFAULT_DOWN_BINDING if saved_down_binding is None else saved_down_binding
 
-listener: KeybindListener
-
 
 # Change the volume of a target. Not sure if more targets might be available in future (e.g. Comms only)
 def volume_change(delta: float):
@@ -71,22 +68,23 @@ def volume_change(delta: float):
         updated_volume, media_name = volumeutils.change_system_volume(delta)
     else:
         # TODO: What should we do?
-        #  Call itself again and provide a better config? Set the config in the file to a default? Nothing and break?
+        #  Call itself again and provide a default config?
+        #  Set the config in the file to a default?
+        #  Nothing and break?
+        #  Quack?!
         raise ValueError(f'Unknown Control Target Configuration: {control_target}')
-    # print('Updated volume: ' + str(updated_volume))
+    print('Updated volume: ' + str(updated_volume))
     if updated_volume is not None:
         volume_bar.set_percentage(round(updated_volume * 100), media_name)
         gui_app.processEvents()
 
 
 def volume_up():
-    print('Volume Up')
     delta = float(volume_config['delta'])
     volume_change(delta)
 
 
 def volume_down():
-    print('Volume Down')
     delta = float(volume_config['delta'])
     volume_change(-delta)
 
@@ -95,48 +93,57 @@ def volume_bar_alert(text: str):
     volume_bar.set_error(text)
 
 
-def startup_keybind_listener():
-    global listener
-    up_binding = load_keybind_from_file(volume_up_keybind_name)
-    down_binding = load_keybind_from_file(volume_down_keybind_name)
-
-    if up_binding is None:
-        up_binding = DEFAULT_UP_BINDING
-    if down_binding is None:
-        down_binding = DEFAULT_DOWN_BINDING
-
-    volume_up_binding = FunctionBinding(up_binding, volume_up)
-    volume_down_binding = FunctionBinding(down_binding, volume_down)
-
-    listener = KeybindListener([
-        volume_up_binding,
-        volume_down_binding
-    ], volume_bar_alert)
-    listener.start()
+# def startup_keybind_listener():
+#     global listener
+#     up_binding = load_keybind_from_file(volume_up_keybind_name)
+#     down_binding = load_keybind_from_file(volume_down_keybind_name)
+#
+#     if up_binding is None:
+#         up_binding = DEFAULT_UP_BINDING
+#     if down_binding is None:
+#         down_binding = DEFAULT_DOWN_BINDING
+#
+#     volume_up_binding = FunctionBinding(up_binding, volume_up)
+#     volume_down_binding = FunctionBinding(down_binding, volume_down)
+#
+#     listener = KeybindListener([
+#         volume_up_binding,
+#         volume_down_binding
+#     ], volume_bar_alert)
+#     listener.start()
 
 
 def startup_keybind_listener_v2():
     global listener_v2
-    up_bindings = kb2.load_bind('volume_up')
-    down_bindings = kb2.load_bind('volume_down')
-
+    up_bindings: kb2.BindingGroup = kb2.load_bind(volume_up_keybind_name)
+    down_bindings: kb2.BindingGroup = kb2.load_bind(volume_down_keybind_name)
+    volume_up_binding = kb2.BoundAction(up_bindings, volume_up)
+    volume_down_binding = kb2.BoundAction(down_bindings, volume_down)
+    listener_v2 = kb2.KeybindListener(bound_actions=[volume_up_binding, volume_down_binding])
+    if None in [up_bindings, down_bindings]:
+        print('Unable to start listener, missing bindings')
+        return
+    listener_v2.start()
 
 
 def restart_keybind_listener():
-    listener.stop()
-    startup_keybind_listener()
+    global listener_v2
+    if listener_v2 is not None:
+        listener_v2.stop()
+    startup_keybind_listener_v2()
 
 
 def stop_keybind_listener():
-    listener.stop()
+    if listener_v2 is not None:
+        listener_v2.stop()
 
 
-startup_keybind_listener()
+startup_keybind_listener_v2()
 
 # GUI Setup
 gui_app = QApplication(sys.argv)
 gui_app.setQuitOnLastWindowClosed(False)
-volume_bar = ui.VolumeBar(10)
+volume_bar = ui.VolumeBar(2)
 volume_bar.hide()
 options_menu = ui.OptionsWindow(
     volume_up_keybind_name,

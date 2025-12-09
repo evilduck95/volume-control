@@ -1,8 +1,9 @@
-import pickle
 import time
+from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
 
+import jsonpickle
 from pynput import keyboard, mouse
 from pynput.keyboard import KeyCode, Key
 from pynput.mouse import Button
@@ -39,50 +40,34 @@ def _convert_to_serializable_key(key: [Key | KeyCode]):
     return SerializableKey(code, name, is_modifier)
 
 
+@dataclass
 class SerializableKey:
 
     def __init__(self, code: int, name: str, is_modifier: bool):
-        self.__code = code
-        self.__name = name
-        self.__is_modifier = is_modifier
-
-    @property
-    def code(self):
-        return self.__code
-
-    @property
-    def name(self):
-        return self.__name
-
-    @property
-    def is_modifier(self):
-        return self.__is_modifier
+        self.code = code
+        self.name = name
+        self.is_modifier = is_modifier
 
 
+@dataclass
 class SerializableMouseButton(SerializableKey):
 
     def __init__(self, code: int, name: str):
         super().__init__(code, name, False)
 
 
+@dataclass
 class Scroll(Enum):
     DOWN = 'WheelDown'
     UP = 'WheelUp'
 
 
+@dataclass
 class SerializableMouseAction:
 
     def __init__(self, button: [SerializableMouseButton | None] = None, scroll: [Scroll | None] = None):
-        self.__button = button
-        self.__scroll = scroll
-
-    @property
-    def button(self):
-        return self.__button
-
-    @property
-    def scroll(self):
-        return self.__scroll
+        self.button = button
+        self.scroll = scroll
 
     def __str__(self):
         print('str')
@@ -92,12 +77,13 @@ class SerializableMouseAction:
             return f'Mouse{self.button.name.capitalize()}'
 
 
+@dataclass
 class Binding:
 
     def __init__(self, keys: list[SerializableKey], mouse_action: [SerializableMouseAction | None] = None):
-        self.__keys = keys
+        self.keys = keys
         self.key_codes: set[int] = set([key.code for key in keys])
-        self.__mouse_action: [SerializableMouseAction | None] = mouse_action
+        self.mouse_action: [SerializableMouseAction | None] = mouse_action
 
     def is_active(self, keys_pressed: set[Key | KeyCode], mouse_button_pressed: [Button | None] = None,
                   scroll: [Scroll | None] = None):
@@ -106,17 +92,9 @@ class Binding:
         if mouse_button_pressed is None and scroll is None:
             return all_keys_pressed
         else:
-            mouse_action_done = (mouse_button_pressed.value == self.__mouse_action.button.code or
-                                 scroll == self.__mouse_action.scroll)
+            mouse_action_done = (mouse_button_pressed.value == self.mouse_action.button.code or
+                                 scroll == self.mouse_action.scroll)
             return all_keys_pressed and mouse_action_done
-
-    @property
-    def keys(self):
-        return self.__keys
-
-    @property
-    def mouse_action(self):
-        return self.__mouse_action
 
     def __str__(self):
         key_names = [key.name for key in self.keys]
@@ -127,24 +105,24 @@ class Binding:
             return f'{keys_pressed_string} + {self.mouse_action}'
 
 
+@dataclass
 class BindingGroup:
 
     def __init__(self, bindings: list[Binding], name: str):
-        self.__bindings = bindings
-        self.__name = name
+        self.bindings = bindings
+        self.name = name
 
-    def try_trigger_with(self, keys: set[Key | KeyCode], action: Callable):
+    def is_active(self, keys: set[Key | KeyCode]):
         for binding in self.bindings:
             if binding.is_active(keys):
-                action()
+                return True
 
-    @property
-    def bindings(self):
-        return self.__bindings
 
-    @property
-    def name(self):
-        return self.__name
+class BoundAction:
+
+    def __init__(self, binding_group: BindingGroup, action: Callable):
+        self.binding_group: BindingGroup = binding_group
+        self.action: Callable = action
 
 
 class KeybindCollector:
@@ -210,9 +188,9 @@ class KeybindCollector:
 
 class KeybindListener:
 
-    def __init__(self, bound_actions: list[BindingGroup]):
+    def __init__(self, bound_actions: list[BoundAction]):
         self.bound_actions = bound_actions
-        self.key_listener = keyboard.Listener(on_press=self._key_pressed, on_release=self._key_released, suppress=True)
+        self.key_listener = keyboard.Listener(on_press=self._key_pressed, on_release=self._key_released, suppress=False)
         self.keys_pressed = set()
         self.prev_keys_pressed = set()
 
@@ -221,8 +199,9 @@ class KeybindListener:
         # Only activate when the number of keys pressed changes (prevent key repetition)
         if self.keys_pressed != self.prev_keys_pressed:
             self.prev_keys_pressed = self.keys_pressed.copy()
-            for action in self.bound_actions:
-                action.try_trigger_with(self.keys_pressed)
+            for bound_action in self.bound_actions:
+                if bound_action.binding_group.is_active(self.keys_pressed):
+                    bound_action.action()
 
     def _key_released(self, key: [Key | KeyCode]):
         if key in self.keys_pressed:
@@ -235,24 +214,28 @@ class KeybindListener:
     def start(self):
         self.key_listener.start()
 
+    def stop(self):
+        self.key_listener.stop()
+
+
 
 def get_callback(num: int) -> Callable:
     return lambda: print(f'Keybind {num} activated')
 
 
 def save_bind(bound_action: BindingGroup):
-    with fileutils.open_resource(f'binding_{bound_action.name}', 'wb') as save_file:
-        # noinspection PyTypeChecker
-        pickle.dump(bound_action, save_file, pickle.HIGHEST_PROTOCOL)
+    json_dump = jsonpickle.encode(bound_action, )
+    with fileutils.open_resource(f'binding_{bound_action.name}.json', 'w') as save_file:
+        save_file.write(json_dump)
 
 
-def load_bind(name: str):
-    file_name = f'binding_{name}'
+def load_bind(name: str) -> [BindingGroup | None]:
+    file_name = f'binding_{name}.json'
     if not fileutils.does_resource_exist(file_name):
         return None
-    with fileutils.open_resource(file_name, 'rb') as save_file:
-        # noinspection PyTypeChecker
-        return pickle.load(save_file)
+    with fileutils.open_resource(file_name, 'r') as save_file:
+        binding_group_data = save_file.read()
+        return jsonpickle.decode(binding_group_data)
 
 # with fileutils.open_resource('name', 'rb') as file:
 #     test_bind_action: BoundAction = pickle.load(file)

@@ -34,7 +34,7 @@ def get_virtual_key_code(key: Key | KeyCode | Button):
         return key.vk if hasattr(key, 'vk') else key.value.vk
 
 
-MODIFIER_KEY_CODES = set(get_virtual_key_code(key) for key in Key)
+MODIFIER_KEY_CODES = set(get_virtual_key_code(key) for key in MODIFIER_KEYS)
 
 
 def convert_to_vks(keys: Iterable[Key | KeyCode]):
@@ -51,6 +51,8 @@ def is_modifier_key(key: [Key | KeyCode]):
         return True
     elif not hasattr(key, 'name') and key.char is None:
         return True
+    else:
+        return False
 
 
 def is_default_keybind(keys_pressed):

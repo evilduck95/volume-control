@@ -5,20 +5,26 @@ import windowutils
 last_controlled_media = ""
 
 
-def change_sink_input_volume(pulse: pulsectl.Pulse,
-                             sink_input: pulsectl.PulseSinkInputInfo,
-                             requested_change: float) -> float:
-    current_volume = pulse.volume_get_all_chans(sink_input)
+def adjusted_volume_change(requested_change, current_volume) -> float:
     # Already at maximum, I've elected to ignore over-amplification for now
     if requested_change > 0 and current_volume == 1:
         print('Already at max volume')
-        return 1
+        return 0
     # Safety first!
     if current_volume + requested_change > 1:
         actual_change = 1 - current_volume
         print('Volume change: ' + str(requested_change) + ' is too high, restricted to ' + str(actual_change))
     else:
         actual_change = requested_change
+    return actual_change
+
+
+def change_sink_input_volume(pulse: pulsectl.Pulse,
+                             sink_input: pulsectl.PulseSinkInputInfo,
+                             requested_change: float) -> float:
+    current_volume = pulse.volume_get_all_chans(sink_input)
+    # Check for adjustments over max volume
+    actual_change = adjusted_volume_change(requested_change, current_volume)
     # Make the change and report
     pulse.volume_change_all_chans(sink_input, actual_change)
     updated_volume = pulse.volume_get_all_chans(sink_input)
@@ -47,5 +53,7 @@ def change_system_volume(change: float) -> [float]:
     with pulsectl.Pulse('system-volume-editor') as pulse:
         # Get Current Output Device (System volume sink)
         default_sink = pulse.sink_default_get()
-        pulse.volume_change_all_chans(default_sink, change)
+        current_volume = pulse.volume_get_all_chans(default_sink)
+        actual_change = adjusted_volume_change(change, current_volume)
+        pulse.volume_change_all_chans(default_sink, actual_change)
         return pulse.volume_get_all_chans(default_sink), default_sink.description
