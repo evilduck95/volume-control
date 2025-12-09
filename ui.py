@@ -337,6 +337,9 @@ class KeybindSetter(QWidget):
         self.setLayout(layout)
         self.after_set_callback = after_set_callback
 
+    def select(self):
+        self.keybind_input.clicked.emit()
+
     def _remove_bind(self):
         saved_binding: kb2.BindingGroup = kb2.load_bind(self.bind_name)
         if len(saved_binding.bindings) > self.bind_index:
@@ -391,17 +394,29 @@ class ExtendableKeybindSetterList(QWidget):
         self.after_set_callback()
 
     def _add_row(self):
+        new_setter_row = KeybindSetter(self.bind_name, self._stacked_widget.count(), self._after_new_row_set)
         self._stacked_widget.addWidget(
-            KeybindSetter(self.bind_name, self._stacked_widget.count(), self._after_new_row_set)
+            new_setter_row
         )
         self.add_row_button.hide()
+        new_setter_row.select()
+
+
+class HorizontalLine(QFrame):
+
+    def __init__(self):
+        super().__init__()
+        # self.setGeometry(0, 0, width, 10)
+        # self.setMaximumWidth(width)
+        self.setFrameShape(QFrame.Shape.HLine)
+        self.setFrameShadow(QFrame.Shadow.Sunken)
 
 
 class OptionsWindow(QWidget):
 
     def __init__(self,
-                 volume_up_keybind_file: str,
-                 volume_down_keybind_file: str,
+                 volume_up_keybind_name: str,
+                 volume_down_keybind_name: str,
                  restart_listeners_callback: Callable,
                  volume_tick_change_callback: Callable,
                  volume_tick: int):
@@ -409,27 +424,21 @@ class OptionsWindow(QWidget):
         self.setWindowTitle('Options')
         self.setAutoFillBackground(False)
         self.setMinimumWidth(300)
-        layout = QFormLayout()
+        layout = QVBoxLayout()
         self.volume_tick_selector = VolumeTickSelector(change_callback=volume_tick_change_callback,
                                                        starting_value=volume_tick)
-        layout.addRow(self.volume_tick_selector)
-        volume_up_inputs = ExtendableKeybindSetterList('Volume Up', volume_up_keybind_file, restart_listeners_callback)
-        layout.addRow(volume_up_inputs)
-        # self.volume_up_inputs = [
-        #     KeybindSetter(
-        #         volume_up_keybind_file,
-        #         0,
-        #         restart_listeners_callback,
-        #         'Volume Up')
-        # ]
-        # self.volume_down_inputs = [
-        #     KeybindSetter(
-        #         volume_down_keybind_file,
-        #         0,
-        #         restart_listeners_callback,
-        #         'Volume Down')
-        # ]
-        # for input_widget in [*self.volume_up_inputs, *self.volume_down_inputs]:
-        #     layout.addRow(input_widget)
+        layout.addWidget(self.volume_tick_selector)
+        layout.addWidget(HorizontalLine())
+        volume_up_inputs = ExtendableKeybindSetterList(
+            'Volume Up',
+            volume_up_keybind_name,
+            restart_listeners_callback)
+        layout.addWidget(volume_up_inputs)
+        layout.addWidget(HorizontalLine())
+        volume_down_inputs = ExtendableKeybindSetterList(
+            'Volume Down',
+            volume_down_keybind_name,
+            restart_listeners_callback)
+        layout.addWidget(volume_down_inputs)
         self.setLayout(layout)
         self.setGeometry(get_monitor_center(get_primary_monitor(), 100, 100))
