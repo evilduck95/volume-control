@@ -34,26 +34,15 @@ QProgressBar::chunk {
 }
 """
 
-SLIDER_STYLE_DEFAULT = """
-.QSlider {
-    min-height: 68px;
-    max-height: 68px;
-    background: #5F4141;
+ADD_ROW_BUTTON_DEFAULT = """
+QPushButton {
+    margin-top: 5px;
 }
+"""
 
-.QSlider::groove:horizontal {
-    border: 1px solid #262626;
-    height: 5px;
-    background: #393939;
-    margin: 0 12px;
-}
-
-.QSlider::handle:horizontal {
-    background: unset;
-    border: 5px solid #B5E61D;
-    width: 23px;
-    height: 100px;
-    margin: -24px -12px;
+REMOVE_BUTTON_DEFAULT = """
+QPushButton {
+    margin-left: 10px;
 }
 """
 
@@ -338,6 +327,9 @@ class KeybindSetter(QWidget):
         self.keybind_input.clicked.connect(self._clicked)
         bottom_row.addWidget(self.keybind_input)
         remove_button = QPushButton('-')
+        remove_button.setStyleSheet(REMOVE_BUTTON_DEFAULT)
+        remove_button.setMinimumHeight(25)
+        remove_button.setMinimumWidth(40)
         remove_button.clicked.connect(self._remove_bind)
         bottom_row.addWidget(remove_button, alignment=Qt.AlignmentFlag.AlignBottom)
         bottom_row.setSpacing(0)
@@ -388,6 +380,8 @@ class ExtendableKeybindSetterList(QWidget):
             self._stacked_widget.addWidget(widget)
         layout.addLayout(self._stacked_widget)
         self.add_row_button = QPushButton('Add a keybind')
+        self.add_row_button.setStyleSheet(ADD_ROW_BUTTON_DEFAULT)
+        self.add_row_button.setMinimumHeight(30)
         self.add_row_button.setFixedWidth(245)
         self.add_row_button.clicked.connect(self._add_row)
         layout.addWidget(self.add_row_button, alignment=Qt.AlignmentFlag.AlignHCenter)
@@ -421,13 +415,11 @@ class ExtendableKeybindSetterList(QWidget):
         new_setter_row.select()
 
 
-class HorizontalLine(QFrame):
+class Line(QFrame):
 
-    def __init__(self):
+    def __init__(self, horizontal: bool = True):
         super().__init__()
-        # self.setGeometry(0, 0, width, 10)
-        # self.setMaximumWidth(width)
-        self.setFrameShape(QFrame.Shape.HLine)
+        self.setFrameShape(QFrame.Shape.HLine if horizontal else QFrame.Shape.VLine)
         self.setFrameShadow(QFrame.Shadow.Sunken)
 
 
@@ -442,22 +434,24 @@ class OptionsWindow(QWidget):
         super().__init__()
         self.setWindowTitle('Options')
         self.setAutoFillBackground(False)
-        self.setMinimumWidth(300)
-        layout = QVBoxLayout()
+        self.setMinimumWidth(600)
+        root_layout = QVBoxLayout()
         self.volume_tick_selector = VolumeTickSelector(change_callback=volume_tick_change_callback,
                                                        starting_value=volume_tick)
-        layout.addWidget(self.volume_tick_selector)
-        layout.addWidget(HorizontalLine())
+        root_layout.addWidget(self.volume_tick_selector)
+        root_layout.addWidget(Line())
+        volume_inputs_layout = QHBoxLayout()
         volume_up_inputs = ExtendableKeybindSetterList(
             'Volume Up',
             volume_up_keybind_name,
             restart_listeners_callback)
-        layout.addWidget(volume_up_inputs)
-        layout.addWidget(HorizontalLine())
+        volume_inputs_layout.addWidget(volume_up_inputs)
+        volume_inputs_layout.addWidget(Line(horizontal=False))
         volume_down_inputs = ExtendableKeybindSetterList(
             'Volume Down',
             volume_down_keybind_name,
             restart_listeners_callback)
-        layout.addWidget(volume_down_inputs)
-        self.setLayout(layout)
+        volume_inputs_layout.addWidget(volume_down_inputs)
+        root_layout.addLayout(volume_inputs_layout)
+        self.setLayout(root_layout)
         self.setGeometry(get_monitor_center(get_primary_monitor(), 100, 100))
