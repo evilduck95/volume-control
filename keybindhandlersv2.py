@@ -8,7 +8,6 @@ from pynput.keyboard import KeyCode, Key
 from pynput.mouse import Button
 
 import fileutils
-import generalutils
 import keybindutils
 
 MODIFIER_KEYS = {
@@ -128,17 +127,16 @@ class Binding:
             return f'{keys_pressed_string} + {self.mouse_action}'
 
 
-class BoundAction:
+class BindingGroup:
 
-    def __init__(self, bindings: list[Binding], name: str, action: Callable = generalutils.noop_func):
+    def __init__(self, bindings: list[Binding], name: str):
         self.__bindings = bindings
         self.__name = name
-        self.__action = action
 
-    def try_trigger_with(self, keys: set[Key | KeyCode]):
+    def try_trigger_with(self, keys: set[Key | KeyCode], action: Callable):
         for binding in self.bindings:
             if binding.is_active(keys):
-                self.action()
+                action()
 
     @property
     def bindings(self):
@@ -147,19 +145,6 @@ class BoundAction:
     @property
     def name(self):
         return self.__name
-
-    @property
-    def action(self):
-        return self.__action
-
-    @action.setter
-    def action(self, action):
-        self.__action = action
-
-    def __getstate__(self):
-        state = self.__dict__.copy()
-        del state['_BoundAction__action']
-        return state
 
 
 class KeybindCollector:
@@ -215,7 +200,8 @@ class KeybindCollector:
         else:
             mouse_action = None
         all_keys = [*self.modifiers_pressed]
-        print(f'Collected\n Modifiers: {self.modifiers_pressed}, Terminator: {self.terminal_key}, Mouse: {self.terminal_mouse_action}')
+        print(
+            f'Collected\n Modifiers: {self.modifiers_pressed}, Terminator: {self.terminal_key}, Mouse: {self.terminal_mouse_action}')
         if self.terminal_key is not None:
             all_keys.append(self.terminal_key)
         pressed_keys = [_convert_to_serializable_key(key) for key in all_keys]
@@ -224,7 +210,7 @@ class KeybindCollector:
 
 class KeybindListener:
 
-    def __init__(self, bound_actions: list[BoundAction]):
+    def __init__(self, bound_actions: list[BindingGroup]):
         self.bound_actions = bound_actions
         self.key_listener = keyboard.Listener(on_press=self._key_pressed, on_release=self._key_released, suppress=True)
         self.keys_pressed = set()
@@ -254,7 +240,7 @@ def get_callback(num: int) -> Callable:
     return lambda: print(f'Keybind {num} activated')
 
 
-def save_bind(bound_action: BoundAction):
+def save_bind(bound_action: BindingGroup):
     with fileutils.open_resource(f'binding_{bound_action.name}', 'wb') as save_file:
         # noinspection PyTypeChecker
         pickle.dump(bound_action, save_file, pickle.HIGHEST_PROTOCOL)
@@ -267,7 +253,6 @@ def load_bind(name: str):
     with fileutils.open_resource(file_name, 'rb') as save_file:
         # noinspection PyTypeChecker
         return pickle.load(save_file)
-
 
 # with fileutils.open_resource('name', 'rb') as file:
 #     test_bind_action: BoundAction = pickle.load(file)

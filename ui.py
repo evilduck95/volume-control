@@ -286,7 +286,7 @@ class UserKeybindInputThread(QThread):
     def __init__(self, bind_name: str, bind_index: int):
         self.bind_name = bind_name
         self.bind_index = bind_index
-        self.saved_bind: kb2.BoundAction = kb2.load_bind(bind_name)
+        self.saved_bind: kb2.BindingGroup = kb2.load_bind(bind_name)
         QThread.__init__(self)
 
     def _update_or_add_binding(self, binding: kb2.Binding):
@@ -305,24 +305,21 @@ class UserKeybindInputThread(QThread):
         binding = collector.collect_keybind()
         print(f'Collected: {binding.keys}, {binding.mouse_action}')
         updated_bindings = self._update_or_add_binding(binding)
-        updated_bound_action = kb2.BoundAction(bindings=updated_bindings, name=self.bind_name)
+        updated_bound_action = kb2.BindingGroup(bindings=updated_bindings, name=self.bind_name)
         kb2.save_bind(updated_bound_action)
         self.keybind_changed.emit(str(binding))
 
 
 class KeybindSetter(QWidget):
 
-    def __init__(self, bind_name: str, bind_index: int, after_set_callback: Callable, label: str = None):
+    def __init__(self, bind_name: str, bind_index: int, after_set_callback: Callable):
         super().__init__()
         self.bind_name = bind_name
         self.bind_index = bind_index
         layout = QVBoxLayout()
-        if label is not None:
-            self.label = QLabel(label)
-            layout.addWidget(self.label)
-        current_bound_action: kb2.BoundAction = kb2.load_bind(bind_name)
-        if current_bound_action is not None and len(current_bound_action.bindings) > bind_index:
-            display_text = str(current_bound_action.bindings[bind_index])
+        self.current_bound_action: kb2.BindingGroup = kb2.load_bind(bind_name)
+        if self.current_bound_action is not None and len(self.current_bound_action.bindings) > bind_index:
+            display_text = str(self.current_bound_action.bindings[bind_index])
         else:
             display_text = 'Press to set keybind...'
         bottom_row = QHBoxLayout()
@@ -334,11 +331,18 @@ class KeybindSetter(QWidget):
         self.keybind_input.clicked.connect(self._clicked)
         bottom_row.addWidget(self.keybind_input)
         remove_button = QPushButton('-')
+        remove_button.clicked.connect(self._remove_bind)
         bottom_row.addWidget(remove_button, alignment=Qt.AlignmentFlag.AlignBottom)
         bottom_row.setSpacing(0)
         self.setLayout(layout)
         self.after_set_callback = after_set_callback
 
+    def _remove_bind(self):
+        saved_binding: kb2.BindingGroup = kb2.load_bind(self.bind_name)
+        if len(saved_binding.bindings) > self.bind_index:
+            saved_binding.bindings.pop(self.bind_index)
+            kb2.save_bind(saved_binding)
+        self.deleteLater()
 
     def _update_keybind_text(self, text):
         self.keybind_input.setText(text)
@@ -358,17 +362,20 @@ class ExtendableKeybindSetterList(QWidget):
         self.bind_name = bind_name
         self.inputs = []
         self.after_set_callback = after_set_callback
-        bound_action: kb2.BoundAction = kb2.load_bind(bind_name)
-        num_of_bindings = len(bound_action.bindings)
+        bound_action: kb2.BindingGroup = kb2.load_bind(bind_name)
+        num_of_bindings = 0 if bound_action is None else len(bound_action.bindings)
+        layout = QVBoxLayout()
+        self.label = QLabel(label)
+        self.label.setMargin(10)
+        layout.addWidget(self.label)
         for i in range(num_of_bindings):
             self.inputs.append(
-                KeybindSetter(bind_name, i, self._after_new_row_set, label if i == 0 else None)
+                KeybindSetter(bind_name, i, self._after_new_row_set)
             )
-        layout = QVBoxLayout()
         for widget in self.inputs:
             self._stacked_widget.addWidget(widget)
         layout.addLayout(self._stacked_widget)
-        self.add_row_button = QPushButton('Add another keybind')
+        self.add_row_button = QPushButton('Add a keybind')
         self.add_row_button.setFixedWidth(245)
         self.add_row_button.clicked.connect(self._add_row)
         layout.addWidget(self.add_row_button, alignment=Qt.AlignmentFlag.AlignHCenter)
