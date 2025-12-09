@@ -10,6 +10,7 @@ from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
 from pynput.keyboard import KeyCode, Key
 
+import generalutils
 import keybindhandlersv2 as kb2
 import keybindutils
 from keybindhandlers import SavedKeybind
@@ -55,6 +56,8 @@ SLIDER_STYLE_DEFAULT = """
     margin: -24px -12px;
 }
 """
+
+user_editing_signal: generalutils.Signal = generalutils.Signal[bool]('user_editing')
 
 
 def get_key_name(key: Key | KeyCode):
@@ -274,7 +277,9 @@ class ClickableLineEdit(QLineEdit):
     clicked = pyqtSignal()
 
     def mousePressEvent(self, event):
+        global user_editing_signal
         if event.button() == Qt.MouseButton.LeftButton:
+            user_editing_signal.emit(True)
             self.clicked.emit()
         else:
             super().mousePressEvent(event)
@@ -301,8 +306,10 @@ class UserKeybindInputThread(QThread):
         return saved_bindings.copy()
 
     def run(self):
+        global user_editing_signal
         collector = kb2.KeybindCollector()
         binding = collector.collect_keybind()
+        user_editing_signal.emit(False)
         print(f'Collected: {binding.keys}, {binding.mouse_action}')
         updated_bindings = self._update_or_add_binding(binding)
         updated_bound_action = kb2.BindingGroup(bindings=updated_bindings, name=self.bind_name)
@@ -342,10 +349,12 @@ class KeybindSetter(QWidget):
 
     def _remove_bind(self):
         saved_binding: kb2.BindingGroup = kb2.load_bind(self.bind_name)
-        if len(saved_binding.bindings) > self.bind_index:
+        if saved_binding is not None and len(saved_binding.bindings) > self.bind_index:
             saved_binding.bindings.pop(self.bind_index)
             kb2.save_bind(saved_binding)
+        self.after_set_callback()
         self.deleteLater()
+        user_editing_signal.emit(False)
 
     def _update_keybind_text(self, text):
         self.keybind_input.setText(text)
@@ -384,16 +393,26 @@ class ExtendableKeybindSetterList(QWidget):
         layout.addWidget(self.add_row_button, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.setSpacing(0)
         self.setLayout(layout)
+        self.row_added = False
+        global user_editing_signal
+        user_editing_signal.connect(self._user_editing_update)
+
+    def _user_editing_update(self, is_editing: bool):
+        self.add_row_button.setDisabled(is_editing)
 
     @cached_property
     def _stacked_widget(self):
         return QVBoxLayout()
 
     def _after_new_row_set(self):
+        self.row_added = False
         self.add_row_button.show()
         self.after_set_callback()
 
     def _add_row(self):
+        global user_editing_signal
+        self.row_added = True
+        user_editing_signal.emit(True)
         new_setter_row = KeybindSetter(self.bind_name, self._stacked_widget.count(), self._after_new_row_set)
         self._stacked_widget.addWidget(
             new_setter_row

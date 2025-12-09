@@ -50,8 +50,8 @@ def refresh_config():
 
 
 # Bindings
-volume_up_keybind_name = 'volume_up.kbd'
-volume_down_keybind_name = 'volume_down.kbd'
+volume_up_keybind_name = 'volume_up'
+volume_down_keybind_name = 'volume_down'
 
 saved_up_binding = load_keybind_from_file(volume_up_keybind_name)
 saved_down_binding = load_keybind_from_file(volume_down_keybind_name)
