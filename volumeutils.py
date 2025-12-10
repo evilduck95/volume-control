@@ -47,6 +47,8 @@ def change_active_window_volume(change: float) -> [float, str]:
                     last_controlled_media = media_name
                     print('Media: ' + media_name)
                 return change_sink_input_volume(pulse, sink_input, change), media_name
+    # Default values to return in event we're focused on a silent app
+    return 0, 'NO_TARGET'
 
 
 def change_system_volume(change: float) -> [float]:
