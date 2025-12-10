@@ -1,3 +1,4 @@
+import enum
 from typing import Callable, TypeVar, Any, Generic
 
 noop_func = lambda *a, **k: None
@@ -18,3 +19,8 @@ class Signal(Generic[T]):
     def emit(self, arg: T = None):
         for func in self.func_bindings:
             func(arg)
+
+
+class ControlTarget(enum.Enum):
+    SYSTEM = 'system'
+    CURRENT_APPLICATION = 'current_application'

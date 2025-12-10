@@ -385,7 +385,7 @@ class ExtendableKeybindSetterList(QWidget):
         self.add_row_button.setFixedWidth(245)
         self.add_row_button.clicked.connect(self._add_row)
         layout.addWidget(self.add_row_button, alignment=Qt.AlignmentFlag.AlignHCenter)
-        layout.setSpacing(0)
+        layout.addStretch()
         self.setLayout(layout)
         self.row_added = False
         global user_editing_signal
@@ -415,6 +415,48 @@ class ExtendableKeybindSetterList(QWidget):
         new_setter_row.select()
 
 
+class VolumeTargetSelector(QWidget):
+
+    def __init__(self,
+                 state_changed_callback: Callable[[generalutils.ControlTarget], None],
+                 starting_value: generalutils.ControlTarget):
+        super().__init__()
+        self.layout = QHBoxLayout()
+        self.state_changed_callback = state_changed_callback
+        self.starting_value = starting_value
+        self.all_buttons = []
+        self._add_button('System', generalutils.ControlTarget.SYSTEM)
+        self._add_button('Application', generalutils.ControlTarget.CURRENT_APPLICATION)
+        # self.system_control_button = QPushButton('System')
+        # self.system_control_button.clicked.connect(
+        #     lambda: self._button_selection(self.system_control_button, generalutils.ControlTarget.SYSTEM))
+        # self.all_buttons.append(self.system_control_button)
+        # self.app_control_button = QPushButton('Current\nApplication')
+        # self.app_control_button.clicked.connect(
+        #     lambda: self._button_selection(self.app_control_button, generalutils.ControlTarget.CURRENT_APPLICATION))
+        # self.all_buttons.append(self.app_control_button)
+
+        # for button in self.all_buttons:
+        #     button.setCheckable(True)
+        #     self.layout.addWidget(button)
+        self.setLayout(self.layout)
+
+    def _add_button(self, text: str, control_target: generalutils.ControlTarget):
+        button = QPushButton(text)
+        button.clicked.connect(lambda: self._button_selection(button, control_target))
+        button.setCheckable(True)
+        if control_target == self.starting_value:
+            button.setChecked(True)
+        self.all_buttons.append(button)
+        self.layout.addWidget(button)
+
+    def _button_selection(self, pressed_button: QPushButton, control_target: generalutils.ControlTarget):
+        for button in self.all_buttons:
+            if button is not pressed_button:
+                button.setChecked(False)
+                self.state_changed_callback(control_target)
+
+
 class Line(QFrame):
 
     def __init__(self, horizontal: bool = True):
@@ -430,15 +472,25 @@ class OptionsWindow(QWidget):
                  volume_down_keybind_name: str,
                  restart_listeners_callback: Callable,
                  volume_tick_change_callback: Callable,
-                 volume_tick: int):
+                 volume_target_change_callback: Callable[[generalutils.ControlTarget], None],
+                 volume_tick: int,
+                 control_target: generalutils.ControlTarget):
         super().__init__()
         self.setWindowTitle('Options')
         self.setAutoFillBackground(False)
         self.setMinimumWidth(600)
+        self.setMinimumHeight(600)
         root_layout = QVBoxLayout()
-        self.volume_tick_selector = VolumeTickSelector(change_callback=volume_tick_change_callback,
-                                                       starting_value=volume_tick)
+        self.volume_tick_selector = VolumeTickSelector(
+            change_callback=volume_tick_change_callback,
+            starting_value=volume_tick
+        )
         root_layout.addWidget(self.volume_tick_selector)
+        self.volume_target_selector = VolumeTargetSelector(
+            state_changed_callback=volume_target_change_callback,
+            starting_value=control_target
+        )
+        root_layout.addWidget(self.volume_target_selector)
         root_layout.addWidget(Line())
         volume_inputs_layout = QHBoxLayout()
         volume_up_inputs = ExtendableKeybindSetterList(

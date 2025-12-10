@@ -6,10 +6,11 @@ from PyQt6.QtWidgets import QApplication, QSystemTrayIcon, QMenu
 from pynput import keyboard
 
 import fileutils
+import generalutils
 import keybindhandlersv2 as kb2
 import ui
 import volumeutils
-from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_DOWN_BINDING, KeybindListener
+from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_DOWN_BINDING
 
 config_filename = 'config.yml'
 
@@ -30,6 +31,16 @@ def update_volume_config(tick_value: float):
     with fileutils.open_resource(config_filename, "w") as config_file:
         yaml.safe_dump(config, config_file)
         print(f'Update volume tick to: {config["volume"]["delta"]}')
+    refresh_config()
+
+
+def update_control_target_config(control_target: generalutils.ControlTarget):
+    with fileutils.open_resource(config_filename) as config_file:
+        config = yaml.safe_load(config_file)
+        config['control']['target'] = control_target.value
+    with fileutils.open_resource(config_filename, "w") as config_file:
+        yaml.safe_dump(config, config_file)
+        print(f'Update volume control target to: {config["control"]["target"]}')
     refresh_config()
 
 
@@ -150,7 +161,9 @@ options_menu = ui.OptionsWindow(
     volume_down_keybind_name,
     restart_listeners_callback=restart_keybind_listener,
     volume_tick_change_callback=update_volume_config,
-    volume_tick=int(float(volume_config['delta']) * 100)
+    volume_target_change_callback=update_control_target_config,
+    volume_tick=int(float(volume_config['delta']) * 100),
+    control_target=generalutils.ControlTarget(control_config['target'])
 )
 
 tray = QSystemTrayIcon()
