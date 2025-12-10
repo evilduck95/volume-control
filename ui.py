@@ -251,6 +251,7 @@ class VolumeTickSelector(QWidget):
         self.slider.setValue(starting_value)
         self.slider.setSingleStep(1)
         self.slider.setTickInterval(5)
+        self.slider.wheelEvent = generalutils.noop_func
         # self.slider.setStyleSheet(SLIDER_STYLE_DEFAULT)
         self.slider.valueChanged.connect(self.update_value)
         self.slider.sliderReleased.connect(lambda: change_callback(self.slider.value() / 100))
@@ -260,6 +261,7 @@ class VolumeTickSelector(QWidget):
 
     def update_value(self, value):
         self.slider_value_label.setText(f'Volume Change/Tick: {value}%')
+
 
 
 class ClickableLineEdit(QLineEdit):

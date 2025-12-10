@@ -84,7 +84,7 @@ def volume_change(delta: float):
         #  Nothing and break?
         #  Quack?!
         raise ValueError(f'Unknown Control Target Configuration: {control_target}')
-    print('Updated volume: ' + str(updated_volume))
+    # print('Updated volume: ' + str(updated_volume))
     if updated_volume is not None:
         volume_bar.set_percentage(round(updated_volume * 100), media_name)
         gui_app.processEvents()
