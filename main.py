@@ -87,7 +87,7 @@ def volume_change(delta: float):
     # print('Updated volume: ' + str(updated_volume))
     # TODO: Flash some small UI element where the volume bar would be
     #  to indicate that it's working but there's no control here
-    if media_name is not 'NO_TARGET':
+    if media_name != 'NO_TARGET':
         volume_bar.set_percentage(round(updated_volume * 100), media_name)
         gui_app.processEvents()
 
