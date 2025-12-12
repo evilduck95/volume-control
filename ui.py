@@ -14,6 +14,7 @@ from pynput.keyboard import KeyCode, Key
 import generalutils
 import keybindhandlers as kb2
 import keybindutils
+from loggingutils import get_logger
 
 PROGRESS_BAR_STYLE_DEFAULT = """
 QProgressBar {
@@ -48,6 +49,8 @@ QPushButton {
 
 user_editing_signal: generalutils.Signal = generalutils.Signal[bool]('user_editing')
 
+logger = get_logger(__file__)
+
 
 def get_key_name(key: Key | KeyCode):
     name = key.name if hasattr(key, 'name') else key.char
@@ -66,7 +69,7 @@ def get_primary_monitor():
     for idx, monitor in enumerate(screeninfo.get_monitors()):
         if monitor.is_primary:
             return idx
-    print('How did we get here??')
+    logger.critical('How did we get here??')
     return 0
 
 
@@ -287,7 +290,7 @@ class UserKeybindInputThread(QThread):
         collector = kb2.KeybindCollector()
         binding = collector.collect_keybind()
         user_editing_signal.emit(False)
-        print(f'Collected: {binding.keys}, {binding.mouse_action}')
+        logger.debug(f'Collected: {binding.keys}, {binding.mouse_action}')
         updated_bindings = self._update_or_add_binding(binding)
         updated_bound_action = kb2.BindingGroup(bindings=updated_bindings, name=self.bind_name)
         kb2.save_bind(updated_bound_action)
@@ -405,6 +408,11 @@ class ExtendableKeybindSetterList(QWidget):
 
 class ExponentialSlider(QSlider):
 
+    slider_values = [1, 2, 3, 4, 5, 10, 20, 30, 40, 50]
+    smoothing_factor = 2.75
+    base = 1.03
+    offset = -2.7
+
     def __init__(self, minimum, maximum, interval):
         super().__init__(Qt.Orientation.Horizontal)
         self.setFixedHeight(50)
@@ -414,27 +422,36 @@ class ExponentialSlider(QSlider):
         self.interval = interval
 
     def lin_to_exp(self, value):
-        return math.exp((value / 5) - 5)
+        return self.smoothing_factor * math.pow(self.base, value) + self.offset
 
     def test(self, value):
-        print(f'Slider: {value}')
+        print(f'Slider: {value} -> {self.lin_to_exp(value)} -> {round(self.lin_to_exp(value))}')
 
+    def should_print_tick_value(self, value):
+        for test_val in self.slider_values:
+            if math.fabs(value - test_val) < (value / 51):
+                return True
+        return False
     def paintEvent(self, ev, QPaintEvent=None):
         super().paintEvent(ev)
         painter = QPainter(self)
         painter.setPen(QPen(Qt.GlobalColor.white))
 
         rect: QRect = self.geometry()
-        num_ticks = (self.max - self.min) / self.interval
+        num_ticks = 100
         font_metrics = QFontMetrics(self.font())
 
         font_height = font_metrics.height()
+        adjusted_width = rect.width() * 0.9
+        x_offset = 10
+        for i in range(100):
+            next_tick_value = self.lin_to_exp(i)
+            if self.should_print_tick_value(next_tick_value):
+                tick_num = self.min + (self.interval * i)
+                tick_x = ((rect.width() / num_ticks) * i) - (font_metrics.boundingRect(str(tick_num)).width() / 2) + x_offset
+                tick_y = rect.height() - font_height * 2.5
 
-        for i in range(math.ceil(num_ticks)):
-            tick_num = self.min + (self.interval * i)
-            tick_x = ((rect.width() / num_ticks) * i) - (font_metrics.boundingRect(str(tick_num)).width() / 2)
-            tick_y = rect.height() - font_height
-            painter.drawText(QPoint(int(tick_x), int(tick_y)), str(tick_num))
+                painter.drawText(QPoint(int(tick_x), int(tick_y)), str(round(next_tick_value)))
 
         painter.drawRect(rect)
 
@@ -451,18 +468,6 @@ class VolumeTargetSelector(QWidget):
         self.all_buttons = []
         self._add_button('System', generalutils.ControlTarget.SYSTEM)
         self._add_button('Application', generalutils.ControlTarget.CURRENT_APPLICATION)
-        # self.system_control_button = QPushButton('System')
-        # self.system_control_button.clicked.connect(
-        #     lambda: self._button_selection(self.system_control_button, generalutils.ControlTarget.SYSTEM))
-        # self.all_buttons.append(self.system_control_button)
-        # self.app_control_button = QPushButton('Current\nApplication')
-        # self.app_control_button.clicked.connect(
-        #     lambda: self._button_selection(self.app_control_button, generalutils.ControlTarget.CURRENT_APPLICATION))
-        # self.all_buttons.append(self.app_control_button)
-
-        # for button in self.all_buttons:
-        #     button.setCheckable(True)
-        #     self.layout.addWidget(button)
         self.setLayout(self.layout)
 
     def _add_button(self, text: str, control_target: generalutils.ControlTarget):
@@ -489,7 +494,8 @@ class KeyLogger(QWidget):
         super().__init__()
         layout = QVBoxLayout()
         self.text_block = QPlainTextEdit()
-        self.text_block.setMaximumBlockCount(10)
+        self.text_block.zoomIn(2)
+        self.text_block.setMaximumBlockCount(20)
         self.text_block.setReadOnly(True)
         layout.addWidget(self.text_block)
         self.logging = False
@@ -512,11 +518,15 @@ class KeyLogger(QWidget):
             self.button.setText('Start Log')
             self.key_listener.stop()
 
+    def _key_as_log(self, key: [Key | KeyCode], pressed: bool):
+        return (f'{"Pressed" if pressed else "Released"}: [{keybindutils.stringify_key(key)}], '
+                f'Code: [{keybindutils.get_virtual_key_code(key)}]')
+
     def _press_key(self, key: [Key | KeyCode]):
-        self.text_block.appendPlainText(f'Pressed: [{keybindutils.stringify_key(key)}]')
+        self.text_block.appendPlainText(self._key_as_log(key, True))
 
     def _release_key(self, key: [Key | KeyCode]):
-        self.text_block.appendPlainText(f'Released: [{keybindutils.stringify_key(key)}]')
+        self.text_block.appendPlainText(self._key_as_log(key, False))
 
 
 class Line(QFrame):

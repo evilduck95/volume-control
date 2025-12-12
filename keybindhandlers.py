@@ -246,7 +246,7 @@ class KeybindListener:
         if key in self.keys_pressed:
             self.keys_pressed.remove(key)
         else:
-            logger.warning('Unknown key released, cleared all keys')
+            logger.warning(f'Unknown key [{key}] released, cleared all keys')
             self.keys_pressed.clear()
         self.prev_keys_pressed = self.keys_pressed.copy()
 
@@ -282,32 +282,3 @@ def load_bind(name: str) -> [BindingGroup | None]:
             return None
         else:
             return decode
-
-# with fileutils.open_resource('name', 'rb') as file:
-#     test_bind_action: BoundAction = pickle.load(file)
-#     test_bind_action.action = lambda: print('Woohoo')
-#
-#
-# KeybindListener([test_bind_action]).start()
-
-# bound_actions = []
-#
-# for i in range(2):
-#     print(f'Collecting keybind: {i}')
-#     collector = KeybindCollector()
-#     modifiers_pressed, terminal_key = collector.collect_keybind()
-#     binding_keys = [terminal_key, *modifiers_pressed]
-#
-#     binding = Binding(keys=[_convert_to_serializable_key(key) for key in binding_keys])
-#     bound_actions.append(BoundAction([binding], 'name', get_callback(i)))
-#
-# for bound_action in bound_actions:
-#     save_bind(bound_action)
-#
-#
-# print('Listening for keybinds')
-# listener = KeybindListener(bound_actions)
-# listener.start()
-
-# while True:
-#     pass
