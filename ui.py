@@ -11,9 +11,8 @@ from PyQt6.QtWidgets import *
 from pynput.keyboard import KeyCode, Key
 
 import generalutils
-import keybindhandlersv2 as kb2
+import keybindhandlers as kb2
 import keybindutils
-from keybindhandlers import SavedKeybind
 
 PROGRESS_BAR_STYLE_DEFAULT = """
 QProgressBar {
@@ -54,19 +53,6 @@ def get_key_name(key: Key | KeyCode):
     if name is None:
         return str(keybindutils.get_virtual_key_code(key))
     return name.capitalize()
-
-
-def pretty_binding_string(binding: SavedKeybind):
-    if binding.is_scroll_based():
-        binding_activation_string = binding.bound_scroll.value
-    else:
-        binding_activation_string = binding.saved_bound_key if hasattr(binding, 'saved_bound_key') else get_key_name(
-            binding.bound_key)
-    binding_activation_string = binding_activation_string.capitalize()
-    if hasattr(binding, 'saved_modifiers'):
-        return ' + '.join([name.capitalize() for name in binding.saved_modifiers]) + f' + {binding_activation_string}'
-    else:
-        return ' + '.join([get_key_name(key) for key in binding.modifiers]) + f' + {binding_activation_string}'
 
 
 def get_monitor_center(monitor_index, window_width, window_height) -> QRect:

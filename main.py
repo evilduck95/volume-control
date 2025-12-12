@@ -8,14 +8,16 @@ from pynput import keyboard
 
 import fileutils
 import generalutils
-import keybindhandlersv2 as kb2
+import keybindhandlers as keybinds
 import ui
 import volumeutils
-from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_DOWN_BINDING
+from loggingutils import get_logger
 
 config_filename = 'config.yml'
 
 logging.basicConfig(level=logging.INFO)
+
+logger = get_logger(__file__)
 
 
 def load_configs(filename: str):
@@ -33,7 +35,7 @@ def update_volume_config(tick_value: float):
         config['volume']['delta'] = tick_value
     with fileutils.open_resource(config_filename, "w") as config_file:
         yaml.safe_dump(config, config_file)
-        print(f'Update volume tick to: {config["volume"]["delta"]}')
+        logger.debug(f'Update volume tick to: {config["volume"]["delta"]}')
     refresh_config()
 
 
@@ -65,12 +67,6 @@ def refresh_config():
 # Bindings
 volume_up_keybind_name = 'volume_up'
 volume_down_keybind_name = 'volume_down'
-
-saved_up_binding = load_keybind_from_file(volume_up_keybind_name)
-saved_down_binding = load_keybind_from_file(volume_down_keybind_name)
-
-initial_up_binding = DEFAULT_UP_BINDING if saved_up_binding is None else saved_up_binding
-initial_down_binding = DEFAULT_DOWN_BINDING if saved_down_binding is None else saved_down_binding
 
 
 # Change the volume of a target. Not sure if more targets might be available in future (e.g. Comms only)
@@ -128,25 +124,21 @@ def volume_bar_alert(text: str):
 #     ], volume_bar_alert)
 #     listener.start()
 
+listener_v2: keybinds.KeybindListener
 
-def startup_keybind_listener_v2():
+
+# Setup and start (if possible) Keybind Listener
+def start_keybind_listener():
     global listener_v2
-    up_bindings: kb2.BindingGroup = kb2.load_bind(volume_up_keybind_name)
-    down_bindings: kb2.BindingGroup = kb2.load_bind(volume_down_keybind_name)
-    volume_up_binding = kb2.BoundAction(up_bindings, volume_up)
-    volume_down_binding = kb2.BoundAction(down_bindings, volume_down)
-    listener_v2 = kb2.KeybindListener(bound_actions=[volume_up_binding, volume_down_binding])
+    up_bindings: keybinds.BindingGroup = keybinds.load_bind(volume_up_keybind_name)
+    down_bindings: keybinds.BindingGroup = keybinds.load_bind(volume_down_keybind_name)
+    volume_up_binding = keybinds.BoundAction(up_bindings, volume_up)
+    volume_down_binding = keybinds.BoundAction(down_bindings, volume_down)
+    listener_v2 = keybinds.KeybindListener(bound_actions=[volume_up_binding, volume_down_binding])
     if None in [up_bindings, down_bindings]:
-        print('Unable to start listener, missing bindings')
+        logger.warn('Unable to start listener, missing bindings')
         return
     listener_v2.start()
-
-
-def restart_keybind_listener():
-    global listener_v2
-    if listener_v2 is not None:
-        listener_v2.stop()
-    startup_keybind_listener_v2()
 
 
 def stop_keybind_listener():
@@ -154,7 +146,14 @@ def stop_keybind_listener():
         listener_v2.stop()
 
 
-startup_keybind_listener_v2()
+def restart_keybind_listener():
+    global listener_v2
+    stop_keybind_listener()
+    start_keybind_listener()
+
+
+# Init listener
+start_keybind_listener()
 
 # GUI Setup
 gui_app = QApplication(sys.argv)

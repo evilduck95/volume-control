@@ -1,380 +1,300 @@
 import time
+from dataclasses import dataclass
 from enum import Enum
 from typing import Callable
 
+import jsonpickle
 from pynput import keyboard, mouse
 from pynput.keyboard import KeyCode, Key
 from pynput.mouse import Button
 
 import fileutils
-import generalutils
 import keybindutils
-from customthreading import ReturningThread
+
+MODIFIER_KEYS = {
+    Key.ctrl_l,
+    Key.ctrl_r,
+    Key.ctrl,
+
+    Key.shift_l,
+    Key.shift_r,
+    Key.shift,
+
+    Key.alt_gr,
+    Key.alt_l,
+    Key.alt_r,
+    Key.alt,
+
+    Key.cmd_l,
+    Key.cmd_r,
+    Key.cmd
+}
+
+MODIFIER_KEY_CODES = set(keybindutils.get_virtual_key_code(key) for key in Key)
 
 
-class ScrollAction(Enum):
-    UP = '<ScrollUp>'
-    DOWN = '<ScrollDown>'
-    NONE = '<None>'
+def _convert_to_serializable_key(key: [Key | KeyCode]):
+    code = keybindutils.get_virtual_key_code(key)
+    name = keybindutils.get_key_name(key)
+    is_modifier = keybindutils.is_modifier_key(key)
+    return SerializableKey(code, name, is_modifier)
 
-    @staticmethod
-    def for_value(value):
-        if value == ScrollAction.UP.value:
-            return ScrollAction.UP
+
+@dataclass
+class SerializableKey:
+
+    def __init__(self, code: int, name: str, is_modifier: bool):
+        self.code = code
+        self.name = name
+        self.is_modifier = is_modifier
+
+
+@dataclass
+class SerializableMouseButton(SerializableKey):
+
+    def __init__(self, code: int, name: str):
+        super().__init__(code, name, False)
+
+
+@dataclass
+class Scroll(Enum):
+    DOWN = 'WheelDown'
+    UP = 'WheelUp'
+
+
+@dataclass
+class SerializableMouseAction:
+
+    def __init__(self, button: [SerializableMouseButton | None] = None, scroll: [Scroll | None] = None):
+        self.button = button
+        self.scroll = scroll
+
+    def __str__(self):
+        print('str')
+        if self.button is None:
+            return f'Mouse{self.scroll.value}'
         else:
-            return ScrollAction.DOWN
+            return f'Mouse{self.button.name.capitalize()}'
 
 
+@dataclass
 class Binding:
 
-    def __init__(self, modifier_keys: set[Key | KeyCode],
-                 bound_key: [Key | KeyCode | None],
-                 bound_scroll: [ScrollAction] = ScrollAction.NONE):
-        # Raw Keys
-        self.__modifier_keys: set[Key | KeyCode] = modifier_keys
-        self.__bound_key: [Key | KeyCode] = bound_key
+    def __init__(self, keys: list[SerializableKey], mouse_action: [SerializableMouseAction | None] = None):
+        self.keys = keys
+        self.key_codes: set[int] = set([key.code for key in keys])
+        self.mouse_action: [SerializableMouseAction | None] = mouse_action
 
-        # Key Codes only for logic
-        self.__modifier_codes: set[int] = keybindutils.convert_to_vks(modifier_keys)
-        self.__bound_key_code: int = keybindutils.get_virtual_key_code(bound_key) if bound_key is not None else None
+    def is_active(self,
+                  keys_pressed: set[Key | KeyCode],
+                  mouse_button_pressed: [Button | None] = None,
+                  scroll: [Scroll | None] = None):
+        pressed_key_codes = keybindutils.convert_to_vks(keys_pressed)
+        all_keys_are_pressed = pressed_key_codes == self.key_codes
 
-        # Scroll Value
-        self.__bound_scroll: ScrollAction = bound_scroll
+        # This is just written out like this for my silly human brain :3
+        mouse_is_pressed = mouse_button_pressed is not None
+        mouse_is_scrolled = scroll is not None
+        keys_only = not (mouse_is_pressed or mouse_is_scrolled)
 
-        # Internal State
-        self.__key_codes_missing: bool = (
-                any(keybindutils.get_virtual_key_code(key) in [None, 0] for key in modifier_keys) or
-                bound_key is None or
-                keybindutils.get_virtual_key_code(bound_key) in [None, 0])
-
-    def is_activated(self, keys_pressed: set[Key | KeyCode | Button], scroll_action=None):
-        # Check if all of our wanted modifiers are a part of the set of pressed keys
-        pressed_codes = keybindutils.convert_to_vks(keys_pressed)
-        modifiers_pressed = self.__modifier_codes.issubset(pressed_codes)
-        # Check if we're using a mouse scroll wheel based bind
-        action_binding_pressed: bool
-        if self.is_scroll_based():
-            action_binding_pressed = scroll_action == self.__bound_scroll
-            return modifiers_pressed and action_binding_pressed and len(keys_pressed) == len(self.__modifier_codes)
+        if keys_only:
+            return all_keys_are_pressed
         else:
-            action_binding_pressed = self.__bound_key_code in pressed_codes
-            return modifiers_pressed and action_binding_pressed and len(keys_pressed) == len(self.__modifier_codes) + 1
+            if mouse_is_pressed:
+                mouse_action_done = mouse_button_pressed.value == self.mouse_action.button.code
+            else:
+                mouse_action_done = scroll is self.mouse_action.scroll
+            return all_keys_are_pressed and mouse_action_done
 
-    def is_scroll_based(self):
-        return self.__bound_scroll is not None
-
-    def has_mouse_buttons(self):
-        return keybindutils.key_is_mouse_button(self.__bound_key) or any(
-            keybindutils.key_is_mouse_button(k) for k in self.__modifier_keys)
-
-    @property
-    def modifiers(self) -> set[Key | KeyCode]:
-        return self.__modifier_keys
-
-    @property
-    def bound_key(self) -> [Key | KeyCode]:
-        return self.__bound_key
-
-    @property
-    def bound_scroll(self) -> ScrollAction:
-        return self.__bound_scroll
+    def __str__(self):
+        key_names = [key.name for key in self.keys]
+        keys_pressed_string = ' + '.join(key_names)
+        if self.mouse_action is None:
+            return keys_pressed_string
+        else:
+            return f'{keys_pressed_string} + {self.mouse_action}'
 
 
-class FunctionBinding:
+@dataclass
+class BindingGroup:
 
-    def __init__(self, binding: Binding, callback: Callable):
-        self.__binding = binding
-        self.__callback = callback
+    def __init__(self, bindings: list[Binding], name: str):
+        self.bindings = bindings
+        self.name = name
 
-    @property
-    def binding(self) -> Binding:
-        return self.__binding
-
-    @property
-    def callback(self) -> Callable:
-        return self.__callback
-
-
-class SavedKey:
-
-    def __init__(self, vk: int, name: str):
-        self.__vk = vk
-        self.__name = name
-
-    @property
-    def vk(self):
-        return self.__vk
-
-    @property
-    def name(self):
-        return self.__name
+    def is_active(self,
+                  keys: set[Key | KeyCode],
+                  mouse_button: [Button | None] = None,
+                  scroll: [Scroll | None] = None):
+        for binding in self.bindings:
+            if binding.is_active(keys, mouse_button, scroll):
+                return True
 
 
-class SavedKeybind(Binding):
+class BoundAction:
 
-    def __init__(self, modifier_keys: set[SavedKey],
-                 bound_key: [SavedKey | None],
-                 bound_scroll: [ScrollAction] = ScrollAction.NONE):
-        raw_bound_key: [KeyCode | None] = None
-        if bound_key is not None:
-            raw_bound_key = KeyCode(vk=bound_key.code, char=bound_key.name)
-        super().__init__(
-            set([KeyCode.from_vk(key.vk) for key in modifier_keys]),
-            raw_bound_key,
-            bound_scroll
-        )
-        self.__saved_modifier_names = [key.name for key in modifier_keys]
-        self.__saved_bound_key_name = None if bound_key is None else bound_key.name
-
-    @property
-    def saved_modifiers(self):
-        return self.__saved_modifier_names
-
-    @property
-    def saved_bound_key(self):
-        return self.__saved_bound_key_name
-
-
-# TODO: Reads the file ok right now.
-#  Feels a bit raw atm and could probably do with some centralised ruling
-def load_keybind_from_file(filename: str):
-    modifiers: set[SavedKey] = set()
-    key: [SavedKey | None] = None
-    scroll: [ScrollAction | None] = None
-    if not fileutils.does_resource_exist(filename):
-        print(f'Keybind file: {filename} not found, skipping...')
-        return
-    try:
-        with fileutils.open_resource(filename, 'rt') as file:
-            section = ''
-            for line in file:
-                value = line.replace('\n', '').strip().split(':')
-                if value[0] in ('modifiers', 'key', 'mouse_button', 'scroll'):
-                    section = value[0]
-                else:
-                    if section == 'modifiers':
-                        modifiers.add(SavedKey(int(value[0]), value[1]))
-                        # modifiers.add(KeyCode.from_vk(int(value[0])))
-                    elif section == 'key':
-                        key = SavedKey(int(value[0]), value[1])
-                        # key = KeyCode.from_vk(int(value[0]))
-                    elif section == 'mouse_button':
-                        key = SavedKey(int(value[0]), f'mouse_{value[1]}')
-                    elif section == 'scroll':
-                        scroll = ScrollAction.for_value(value[0])
-        return SavedKeybind(
-            modifiers,
-            key,
-            scroll
-        )
-    except FileNotFoundError:
-        return None
+    def __init__(self, binding_group: BindingGroup, action: Callable):
+        self.binding_group: BindingGroup = binding_group
+        self.action: Callable = action
 
 
 class KeybindCollector:
 
     def __init__(self):
-        self.keybind_modifiers = set()
-        self.bound_key: Key | KeyCode | Button = None
-        self.bound_scroll: ScrollAction = None
+        self.key_listener = keyboard.Listener(on_press=self._key_pressed, on_release=self._key_released, suppress=True)
+        self.mouse_listener = mouse.Listener(on_click=self._mouse_clicked, on_scroll=self._mouse_scrolled)
+        self.modifiers_pressed: set[Key | KeyCode] = set()
+        self.terminal_key: [Key | KeyCode] = None
+        self.terminal_mouse_action: [Button | Scroll] = None
         self.keybind_complete = False
-        self.keyboard_listener = keyboard.Listener(
-            on_press=self._on_press,
-            on_release=self._on_release,
-            suppress=True
-        )
-        self.mouse_listener = mouse.Listener(
-            on_click=self._on_mouse_press,
-            on_scroll=self._on_mouse_scroll
-        )
 
-    def _on_mouse_press(self, _x, _y, button: Button, pressed):
-        # Don't allow binding normal mouse buttons (Pure madness)
-        if button in [Button.left, Button.right]:
+    def _key_pressed(self, key: [Key | KeyCode]):
+        if not keybindutils.is_modifier_key(key):
+            self.terminal_key = key
+            self.keybind_complete = True
+        else:
+            self.modifiers_pressed.add(key)
+
+    def _key_released(self, key: [Key | KeyCode]):
+        if self.keybind_complete:
             return
-        # Stops any rogue mouse release from triggering end of capture
-        if pressed:
-            self.bound_key = button
+        if key in self.modifiers_pressed:
+            self.modifiers_pressed.remove(key)
+        else:
+            print(f'Unknown key: {key} released, cleared all keys')
+            self.modifiers_pressed.clear()
+
+    def _mouse_clicked(self, _x, _y, button: Button, pressed):
+        if pressed and button not in [Button.left, Button.right]:
+            self.terminal_mouse_action = button
             self.keybind_complete = True
 
-    def _on_mouse_scroll(self, _x, _y, _dx, dy):
-        # We must have some modifiers so scrolling alone won't be bound
-        if len(self.keybind_modifiers) == 0:
-            return
-        if dy < 0:
-            self.bound_scroll = ScrollAction.DOWN
+    def _mouse_scrolled(self, _x, _y, _dx, dy):
+        if dy > 0:
+            self.terminal_mouse_action = Scroll.UP
         else:
-            self.bound_scroll = ScrollAction.UP
-        # Scrolling is a final action like a key or mouse press
+            self.terminal_mouse_action = Scroll.DOWN
         self.keybind_complete = True
 
-    def _on_press(self, key: Key | KeyCode):
-        # print(f'Press: {key}')
-        if not self.keybind_complete:
-            if keybindutils.is_modifier_key(key):
-                self.keybind_modifiers.add(key)
-            else:
-                self.bound_key = key
-
-    def _on_release(self, key: Key | KeyCode):
-        # print(f'Release: {key}')
-        # self.keybind_modifiers.discard(key)
-        self.keybind_complete = True
-
-    # TODO: This might make the keybind files juuuust a little bit clearer if we use it
-    #  I haven't decided if I think it's worth it yet
-    def _for_canonical(self, func):
-        return lambda key: func(self.keyboard_listener.canonical(key))
-
-    def _listen_for_bind(self) -> Binding:
-        self.keyboard_listener.start()
+    def collect_keybind(self):
+        self.key_listener.start()
         self.mouse_listener.start()
         while not self.keybind_complete:
-            time.sleep(.01)
-            pass
-        self.keyboard_listener.stop()
-        binding = Binding(self.keybind_modifiers, self.bound_key, self.bound_scroll)
-        return binding
-
-    def collect_keybind(self) -> Binding:
-        """
-        Thread Blocking call that returns the user-specified keybind once they have provided one
-        :return: A set of Keys specifying a keybind e.g. {'G', <Key.shift: <65505>>, <Key.ctrl: <65507>>}
-        FYI: Your key *codes* may differ
-        """
-        bind_collection_thread = ReturningThread(target=self._listen_for_bind)
-        bind_collection_thread.start()
-        return bind_collection_thread.join()
-
-    def save_keybind(self, filename: str):
-        print(f'Saving bind to file: {filename}')
-        with fileutils.open_resource(filename, mode="w+") as file:
-            file.write('modifiers\n')
-            for key in self.keybind_modifiers:
-                file.write(f'{str(keybindutils.get_virtual_key_code(key))}:{keybindutils.stringify_key(key)}\n')
-            if self.bound_key is not None:
-                if type(self.bound_key) is Button:
-                    file.write('mouse_button\n')
-                else:
-                    file.write('key\n')
-                file.write(
-                    f'{str(keybindutils.get_virtual_key_code(self.bound_key))}:{keybindutils.stringify_key(self.bound_key)}')
-            elif self.bound_scroll is not None:
-                file.write('scroll\n')
-                file.write(str(self.bound_scroll.value))
+            time.sleep(.1)
+        self.mouse_listener.stop()
+        self.key_listener.stop()
+        if self.terminal_mouse_action is not None:
+            if type(self.terminal_mouse_action) is Button:
+                mouse_action = SerializableMouseAction(button=self.terminal_mouse_action)
+            else:
+                mouse_action = SerializableMouseAction(scroll=self.terminal_mouse_action)
+        else:
+            mouse_action = None
+        all_keys = [*self.modifiers_pressed]
+        print(
+            f'Collected\n Modifiers: {self.modifiers_pressed}, Terminator: {self.terminal_key}, Mouse: {self.terminal_mouse_action}')
+        if self.terminal_key is not None:
+            all_keys.append(self.terminal_key)
+        pressed_keys = [_convert_to_serializable_key(key) for key in all_keys]
+        return Binding(pressed_keys, mouse_action)
 
 
 class KeybindListener:
 
-    def __init__(self, function_bindings: list[FunctionBinding],
-                 alert_callback: Callable[[str], None] = generalutils.noop_func):
-        self.function_bindings = function_bindings
-        self.keys_pressed: set[Key | KeyCode] = set()
-        self.keyboard_listener: keyboard.Listener = keyboard.Listener(
-            on_press=self._for_canonical(self._key_pressed),
-            on_release=self._for_canonical(
-                self._key_released),
-            daemon=True)
-        self.mouse_listener: mouse.Listener = mouse.Listener(
-            on_scroll=self._mouse_scrolled,
-            on_click=self._mouse_clicked,
-            daemon=True)
-        self.alert_callback = alert_callback
-        for binding in [fb.binding for fb in function_bindings]:
-            if hasattr(binding, 'saved_modifiers'):
-                print(f'Loaded keybind: {binding.saved_modifiers}, {binding.saved_bound_key}, {binding.bound_scroll}')
+    def __init__(self, bound_actions: list[BoundAction]):
+        self.bound_actions = bound_actions
+        self.key_listener = keyboard.Listener(on_press=self._key_pressed, on_release=self._key_released, suppress=False)
+        self.mouse_listener = mouse.Listener(on_click=self._mouse_clicked, on_scroll=self._mouse_scrolled)
+        self.keys_pressed = set()
+        self.prev_keys_pressed = set()
+        self.mouse_button_pressed: [Button | None] = None
+        self.mouse_scroll: [Scroll | None] = None
 
-    # Callback if our binding is satisfied
-    def _check_and_activate_keybind(self, scroll=None):
-        for function_binding in self.function_bindings:
-            if function_binding.binding.is_activated(self.keys_pressed, scroll):
-                function_binding.callback()
-                return
-
-    def _for_canonical(self, func):
-        return lambda key: func(self.keyboard_listener.canonical(key))
-
-    def _key_pressed(self, key: Key | KeyCode):
-        print(f'Key: {key}')
+    def _key_pressed(self, key: [Key | KeyCode]):
         self.keys_pressed.add(key)
-        self._check_and_activate_keybind()
-
-    def _key_released(self, key: Key | KeyCode):
-        print(f'Released: {key}\n')
-        if key in self.keys_pressed:
-            self.keys_pressed.remove(key)
-        elif len(self.keys_pressed) == 1:
-            self.alert_callback(f'Please re-press keys')
-            print(f'Unknown key: {key} lifted, releasing all modifiers')
-            self.keys_pressed.clear()
+        # Only activate when the number of keys pressed changes (prevent key repetition)
+        if self.keys_pressed != self.prev_keys_pressed:
+            self.prev_keys_pressed = self.keys_pressed.copy()
+            self._try_binding()
 
     def _mouse_scrolled(self, _x, _y, _dx, dy):
-        mouse_scroll = ScrollAction.DOWN if dy < 0 else ScrollAction.UP
-        # print(f'Mouse Scrolled: {mouse_scroll}, {dy}')
-        self._check_and_activate_keybind(mouse_scroll)
+        self.mouse_scroll = Scroll.DOWN if dy < 0 else Scroll.UP
+        self._try_binding()
+        self.mouse_scroll = None
 
     def _mouse_clicked(self, _x, _y, button, pressed):
         if button not in (Button.left, Button.right):
             if pressed:
-                self.keys_pressed.add(button)
-                self._check_and_activate_keybind()
+                self.mouse_button_pressed = button
+                self._try_binding()
             else:
-                self.keys_pressed.discard(button)
+                self.mouse_button_pressed = None
+
+    def _try_binding(self):
+        for bound_action in self.bound_actions:
+            if bound_action.binding_group.is_active(self.keys_pressed, self.mouse_button_pressed, self.mouse_scroll):
+                bound_action.action()
+
+    def _key_released(self, key: [Key | KeyCode]):
+        if key in self.keys_pressed:
+            self.keys_pressed.remove(key)
+        else:
+            print('Unknown key released, cleared all keys')
+            self.keys_pressed.clear()
+        self.prev_keys_pressed = self.keys_pressed.copy()
 
     def start(self):
-        print('Starting Keyboard listener')
-        self.keyboard_listener.start()
-        # Only listen for mouse events if we bound a scroll action or mouse button
-        all_bindings = [fb.binding for fb in self.function_bindings]
-        if any(binding.is_scroll_based() or binding.has_mouse_buttons() for binding in all_bindings):
-            print('Starting Mouse listener')
-            self.mouse_listener.start()
+        self.key_listener.start()
+        self.mouse_listener.start()
 
     def stop(self):
-        self.keyboard_listener.stop()
+        self.key_listener.stop()
         self.mouse_listener.stop()
-        print('Stopped Keybind listener')
 
 
-MOCK_CTRL = SavedKey(vk=0, name='ctrl')
-MOCK_SHIFT = SavedKey(vk=0, name='shift')
+def get_callback(num: int) -> Callable:
+    return lambda: print(f'Keybind {num} activated')
 
-DEFAULT_UP_BINDING = SavedKeybind(
-    modifier_keys={MOCK_CTRL, MOCK_SHIFT},
-    bound_key=None,
-    bound_scroll=ScrollAction.UP)
-DEFAULT_DOWN_BINDING = SavedKeybind(
-    modifier_keys={MOCK_CTRL, MOCK_SHIFT},
-    bound_key=None,
-    bound_scroll=ScrollAction.DOWN)
 
-# collector = KeybindCollector()
-# keybind = collector.collect_keybind()
-# collector.save_keybind('keybind.kbd')
-# print(f'Collected keybind: {keybind}')
+def save_bind(bound_action: BindingGroup):
+    json_dump = jsonpickle.encode(bound_action, )
+    with fileutils.open_resource(f'binding_{bound_action.name}.json', 'w') as save_file:
+        save_file.write(json_dump)
 
-# saved_up_binding = load_keybind_from_file('volume_up.kbd')
-# saved_down_binding = load_keybind_from_file('volume_down.kbd')
+
+def load_bind(name: str) -> [BindingGroup | None]:
+    file_name = f'binding_{name}.json'
+    if not fileutils.does_resource_exist(file_name):
+        return None
+    with fileutils.open_resource(file_name, 'r') as save_file:
+        binding_group_data = save_file.read()
+        return jsonpickle.decode(binding_group_data)
+
+# with fileutils.open_resource('name', 'rb') as file:
+#     test_bind_action: BoundAction = pickle.load(file)
+#     test_bind_action.action = lambda: print('Woohoo')
 #
-# up_binding = DEFAULT_UP_BINDING if saved_up_binding is None else saved_up_binding
-# down_binding = DEFAULT_DOWN_BINDING if saved_down_binding is None else saved_down_binding
+#
+# KeybindListener([test_bind_action]).start()
+
+# bound_actions = []
+#
+# for i in range(2):
+#     print(f'Collecting keybind: {i}')
+#     collector = KeybindCollector()
+#     modifiers_pressed, terminal_key = collector.collect_keybind()
+#     binding_keys = [terminal_key, *modifiers_pressed]
+#
+#     binding = Binding(keys=[_convert_to_serializable_key(key) for key in binding_keys])
+#     bound_actions.append(BoundAction([binding], 'name', get_callback(i)))
+#
+# for bound_action in bound_actions:
+#     save_bind(bound_action)
 #
 #
-# def up():
-#     print('up')
-#
-#
-# def down():
-#     print('down')
-#
-#
-# all_bindings = [
-#     FunctionBinding(up_binding, up),
-#     FunctionBinding(down_binding, down),
-# ]
-#
-# listener = KeybindListener(all_bindings)
+# print('Listening for keybinds')
+# listener = KeybindListener(bound_actions)
 # listener.start()
-#
+
 # while True:
 #     pass
