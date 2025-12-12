@@ -235,12 +235,12 @@ class VolumeTickSelector(QWidget):
         self.update_value(starting_value)
         layout.addRow(self.slider_value_label)
 
-        self.slider = QSlider(Qt.Orientation.Horizontal)
-        self.slider.setTickPosition(QSlider.TickPosition.TicksAbove)
-        self.slider.setRange(1, 50)
+        self.slider = ExponentialSlider()
+        self.slider.setTickPosition(QSlider.TickPosition.TicksBelow)
+        # self.slider.setRange(1, 50)
         self.slider.setValue(starting_value)
-        self.slider.setSingleStep(1)
-        self.slider.setTickInterval(5)
+        # self.slider.setSingleStep(1)
+        # self.slider.setTickInterval(5)
         self.slider.wheelEvent = generalutils.noop_func
         # self.slider.setStyleSheet(SLIDER_STYLE_DEFAULT)
         self.slider.valueChanged.connect(self.update_value)
@@ -409,13 +409,10 @@ class ExtendableKeybindSetterList(QWidget):
 class ExponentialSlider(QSlider):
     slider_values = [1, 2, 3, 4, 5, 10, 20, 30, 40, 50]
 
-    def __init__(self, minimum, maximum, interval):
+    def __init__(self):
         super().__init__(Qt.Orientation.Horizontal)
         self.setFixedHeight(50)
         self.valueChanged.connect(self.test)
-        self.min = minimum
-        self.max = maximum
-        self.interval = interval
 
     def test(self, value):
         print(f'Slider: {value} -> {self.map_v2(value)}')
@@ -436,7 +433,6 @@ class ExponentialSlider(QSlider):
 
     def map_v2(self, value):
         i = math.floor(value / 10)
-        print(i)
         return self.slider_values[i]
 
     def paintEvent(self, ev, QPaintEvent=None):
@@ -451,13 +447,13 @@ class ExponentialSlider(QSlider):
         font_height = font_metrics.height()
         adjusted_width = rect.width() * 1.08
         x_offset = 10
-        y_offset_factor = 2.5
+        y_offset = 5
         for i in range(math.ceil(num_ticks)):
-            tick_num = self.min + (self.interval * i)
+            tick_num = 0 + (2 * i)
             tick_x = ((adjusted_width / num_ticks) * i) - (font_metrics.boundingRect(str(tick_num)).width() / 2) + x_offset
-            tick_y = rect.height() - (font_height * y_offset_factor)
+            tick_y = rect.height() - font_height + y_offset
             painter.drawText(QPoint(int(tick_x), int(tick_y)), str(self.slider_values[i]))
-        painter.drawRect(rect)
+    # painter.drawRect(rect)
 
 
 class VolumeTargetSelector(QWidget):
@@ -562,8 +558,6 @@ class OptionsWindow(QWidget):
             starting_value=volume_tick
         )
         root_layout.addWidget(self.volume_tick_selector)
-        self.volume_test = ExponentialSlider(0, 50, 2)
-        root_layout.addWidget(self.volume_test)
         self.volume_target_selector = VolumeTargetSelector(
             state_changed_callback=volume_target_change_callback,
             starting_value=control_target
