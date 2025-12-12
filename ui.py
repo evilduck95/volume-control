@@ -8,6 +8,7 @@ import screeninfo
 from PyQt6.QtCore import *
 from PyQt6.QtGui import *
 from PyQt6.QtWidgets import *
+from pynput import keyboard
 from pynput.keyboard import KeyCode, Key
 
 import generalutils
@@ -480,6 +481,44 @@ class VolumeTargetSelector(QWidget):
                 self.state_changed_callback(control_target)
 
 
+class KeyLogger(QWidget):
+    key_added_signal = pyqtSignal(object)
+    key_removed_signal = pyqtSignal(object)
+
+    def __init__(self):
+        super().__init__()
+        layout = QVBoxLayout()
+        self.text_block = QPlainTextEdit()
+        self.text_block.setMaximumBlockCount(10)
+        self.text_block.setReadOnly(True)
+        layout.addWidget(self.text_block)
+        self.logging = False
+        self.button = QPushButton('Start Log')
+        self.button.clicked.connect(self._toggle_key_logger)
+        layout.addWidget(self.button)
+        self.setLayout(layout)
+        self.key_added_signal.connect(self._press_key)
+        self.key_removed_signal.connect(self._release_key)
+        self.key_listener = keyboard.Listener(on_press=lambda k: self.key_added_signal.emit(k),
+                                              on_release=lambda k: self.key_removed_signal.emit(k),
+                                              suppress=True)
+
+    def _toggle_key_logger(self):
+        self.logging = not self.logging
+        if self.logging:
+            self.button.setText('Stop Log')
+            self.key_listener.start()
+        else:
+            self.button.setText('Start Log')
+            self.key_listener.stop()
+
+    def _press_key(self, key: [Key | KeyCode]):
+        self.text_block.appendPlainText(f'Pressed: [{keybindutils.stringify_key(key)}]')
+
+    def _release_key(self, key: [Key | KeyCode]):
+        self.text_block.appendPlainText(f'Released: [{keybindutils.stringify_key(key)}]')
+
+
 class Line(QFrame):
 
     def __init__(self, horizontal: bool = True):
@@ -530,5 +569,7 @@ class OptionsWindow(QWidget):
             restart_listeners_callback)
         volume_inputs_layout.addWidget(volume_down_inputs)
         root_layout.addLayout(volume_inputs_layout)
+        key_logger = KeyLogger()
+        root_layout.addWidget(key_logger)
         self.setLayout(root_layout)
         self.setGeometry(get_monitor_center(get_primary_monitor(), 100, 100))

@@ -42,7 +42,3 @@ def find_focused_app_process_ids() -> tuple[psutil.Process, list[psutil.Process]
     parent, children = get_all_related_processes(focussed_proc)
     logger.debug(f'Process: [{focussed_proc.pid}:{focussed_proc.name()}] has {len(children)} children: {children}')
     return parent, children
-
-
-time.sleep(2)
-find_focused_app_process_ids()

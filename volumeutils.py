@@ -4,6 +4,8 @@ from pulsectl import pulsectl
 import windowutils
 from loggingutils import get_logger
 
+last_updated_proc_id: [int | None] = None
+
 logger = get_logger(__file__)
 
 
@@ -37,13 +39,22 @@ def change_sink_input_volume(pulse: pulsectl.Pulse,
     # Make the change and report
     pulse.volume_change_all_chans(sink_input, actual_change)
     updated_volume = pulse.volume_get_all_chans(sink_input)
-    logger.debug(f'Changed [{sink_input.proplist["application.process.binary"]}] by [{actual_change}] to [{updated_volume}]')
+    logger.debug(
+        f'Changed [{sink_input.proplist["application.process.binary"]}] by [{actual_change}] to [{updated_volume}]')
     return updated_volume
 
 
 def change_active_window_volume_v2(change: float) -> [float, str]:
+    global last_updated_proc_id
     process_audio_refs = []
     parent_proc, child_procs = windowutils.find_focused_app_process_ids()
+    if last_updated_proc_id is None:
+        last_updated_proc_id = parent_proc.pid
+        is_new_process = True
+    else:
+        is_new_process = last_updated_proc_id != parent_proc.pid
+    if is_new_process:
+        last_updated_proc_id = parent_proc.pid
     all_active_window_procs = [parent_proc, *child_procs]
     with pulsectl.Pulse('focused_app_volume') as pulse:
         # Gather Sink Inputs and Processes together
@@ -54,15 +65,17 @@ def change_active_window_volume_v2(change: float) -> [float, str]:
                     proc_audio = ProcessAudioReference(sink_input, proc)
                     process_audio_refs.append(proc_audio)
         num_of_sink_inputs = len(process_audio_refs)
-        logger.info(
-            f'Found {num_of_sink_inputs} processes that have audio sinks for: [{parent_proc.pid}:{parent_proc.name()}]')
+        if is_new_process:
+            logger.info(f'Found {num_of_sink_inputs} processes that have audio sinks '
+                        f'for: [{parent_proc.pid}:{parent_proc.name()}]')
         if num_of_sink_inputs == 0:
             logger.debug('No Sink Inputs found for process')
             return 0, 'NO_TARGET'
         updated_volume = 0
         # Iterate over Sink Inputs with a ref to a Process related to our focussed Window
         for ref in process_audio_refs:
-            logger.info(f'Changing volume for: [{ref.process.pid}:{ref.process.name()}] ')
+            if is_new_process:
+                logger.info(f'Changing volume for: [{ref.process.pid}:{ref.process.name()}] ')
             proc_new_volume = change_sink_input_volume(pulse, ref.audio_sink_input, change)
             if proc_new_volume > updated_volume:
                 updated_volume = proc_new_volume

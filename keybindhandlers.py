@@ -10,6 +10,7 @@ from pynput.mouse import Button
 
 import fileutils
 import keybindutils
+from loggingutils import get_logger
 
 MODIFIER_KEYS = {
     Key.ctrl_l,
@@ -32,6 +33,8 @@ MODIFIER_KEYS = {
 
 MODIFIER_KEY_CODES = set(keybindutils.get_virtual_key_code(key) for key in Key)
 
+logger = get_logger(__file__)
+
 
 def _convert_to_serializable_key(key: [Key | KeyCode]):
     code = keybindutils.get_virtual_key_code(key)
@@ -48,6 +51,11 @@ class SerializableKey:
         self.name = name
         self.is_modifier = is_modifier
 
+    def __str__(self):
+        return f'[{self.name}, {self.code}, Modifier: {self.is_modifier}]'
+
+    def __repr__(self):
+        return self.__str__()
 
 @dataclass
 class SerializableMouseButton(SerializableKey):
@@ -70,7 +78,6 @@ class SerializableMouseAction:
         self.scroll = scroll
 
     def __str__(self):
-        print('str')
         if self.button is None:
             return f'Mouse{self.scroll.value}'
         else:
@@ -161,7 +168,7 @@ class KeybindCollector:
         if key in self.modifiers_pressed:
             self.modifiers_pressed.remove(key)
         else:
-            print(f'Unknown key: {key} released, cleared all keys')
+            logger.warning(f'Unknown key: {key} released, cleared all keys')
             self.modifiers_pressed.clear()
 
     def _mouse_clicked(self, _x, _y, button: Button, pressed):
@@ -239,7 +246,7 @@ class KeybindListener:
         if key in self.keys_pressed:
             self.keys_pressed.remove(key)
         else:
-            print('Unknown key released, cleared all keys')
+            logger.warning('Unknown key released, cleared all keys')
             self.keys_pressed.clear()
         self.prev_keys_pressed = self.keys_pressed.copy()
 
@@ -268,7 +275,13 @@ def load_bind(name: str) -> [BindingGroup | None]:
         return None
     with fileutils.open_resource(file_name, 'r') as save_file:
         binding_group_data = save_file.read()
-        return jsonpickle.decode(binding_group_data)
+        decode = jsonpickle.decode(binding_group_data)
+        if type(decode) is not BindingGroup:
+            logger.error(f'Something went wrong loading the file [{file_name}], it may be corrupt')
+            fileutils.invalidate_resource(file_name)
+            return None
+        else:
+            return decode
 
 # with fileutils.open_resource('name', 'rb') as file:
 #     test_bind_action: BoundAction = pickle.load(file)

@@ -72,6 +72,7 @@ volume_down_keybind_name = 'volume_down'
 # Change the volume of a target. Not sure if more targets might be available in future (e.g. Comms only)
 def volume_change(delta: float):
     control_target = control_config['target']
+    logger.debug(f'Controlling: [{control_target}]')
     if control_target == 'current_application':
         updated_volume, media_name = volumeutils.change_active_window_volume_v2(delta)
     elif control_target == 'system':
@@ -83,7 +84,6 @@ def volume_change(delta: float):
         #  Nothing and break?
         #  Quack?!
         raise ValueError(f'Unknown Control Target Configuration: {control_target}')
-    # print('Updated volume: ' + str(updated_volume))
     # TODO: Flash some small UI element where the volume bar would be
     #  to indicate that it's working but there's no control here
     if media_name != 'NO_TARGET':
@@ -105,25 +105,6 @@ def volume_bar_alert(text: str):
     volume_bar.set_error(text)
 
 
-# def startup_keybind_listener():
-#     global listener
-#     up_binding = load_keybind_from_file(volume_up_keybind_name)
-#     down_binding = load_keybind_from_file(volume_down_keybind_name)
-#
-#     if up_binding is None:
-#         up_binding = DEFAULT_UP_BINDING
-#     if down_binding is None:
-#         down_binding = DEFAULT_DOWN_BINDING
-#
-#     volume_up_binding = FunctionBinding(up_binding, volume_up)
-#     volume_down_binding = FunctionBinding(down_binding, volume_down)
-#
-#     listener = KeybindListener([
-#         volume_up_binding,
-#         volume_down_binding
-#     ], volume_bar_alert)
-#     listener.start()
-
 listener_v2: keybinds.KeybindListener
 
 
@@ -136,7 +117,7 @@ def start_keybind_listener():
     volume_down_binding = keybinds.BoundAction(down_bindings, volume_down)
     listener_v2 = keybinds.KeybindListener(bound_actions=[volume_up_binding, volume_down_binding])
     if None in [up_bindings, down_bindings]:
-        logger.warn('Unable to start listener, missing bindings')
+        logger.warning('Unable to start listener, missing bindings')
         return
     listener_v2.start()
 
@@ -160,7 +141,7 @@ gui_app = QApplication(sys.argv)
 gui_app.setQuitOnLastWindowClosed(False)
 volume_bar = ui.VolumeBar(2)
 volume_bar.hide()
-options_menu = ui.OptionsWindow(
+options_menu: ui.OptionsWindow = ui.OptionsWindow(
     volume_up_keybind_name,
     volume_down_keybind_name,
     restart_listeners_callback=restart_keybind_listener,
