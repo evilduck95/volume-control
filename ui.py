@@ -263,7 +263,6 @@ class VolumeTickSelector(QWidget):
         self.slider_value_label.setText(f'Volume Change/Tick: {value}%')
 
 
-
 class ClickableLineEdit(QLineEdit):
     clicked = pyqtSignal()
 
@@ -417,6 +416,41 @@ class ExtendableKeybindSetterList(QWidget):
         new_setter_row.select()
 
 
+class ExponentialSlider(QSlider):
+
+    def __init__(self, minimum, maximum, interval):
+        super().__init__(Qt.Orientation.Horizontal)
+        self.setFixedHeight(50)
+        self.valueChanged.connect(self.test)
+        self.min = minimum
+        self.max = maximum
+        self.interval = interval
+
+    def lin_to_exp(self, value):
+        return math.exp((value / 5) - 5)
+
+    def test(self, value):
+        print(f'Slider: {value}')
+
+    def paintEvent(self, ev, QPaintEvent=None):
+        super().paintEvent(ev)
+        painter = QPainter(self)
+        painter.setPen(QPen(Qt.GlobalColor.white))
+
+        rect: QRect = self.geometry()
+        num_ticks = (self.max - self.min) / self.interval
+        font_metrics = QFontMetrics(self.font())
+
+        font_height = font_metrics.height()
+
+        for i in range(math.ceil(num_ticks)):
+            tick_num = self.min + (self.interval * i)
+            tick_x = ((rect.width() / num_ticks) * i) - (font_metrics.boundingRect(str(tick_num)).width() / 2)
+            tick_y = rect.height() - font_height
+            painter.drawText(QPoint(int(tick_x), int(tick_y)), str(tick_num))
+
+        painter.drawRect(rect)
+
 class VolumeTargetSelector(QWidget):
 
     def __init__(self,
@@ -488,6 +522,8 @@ class OptionsWindow(QWidget):
             starting_value=volume_tick
         )
         root_layout.addWidget(self.volume_tick_selector)
+        self.volume_test = ExponentialSlider(0, 50, 2)
+        root_layout.addWidget(self.volume_test)
         self.volume_target_selector = VolumeTargetSelector(
             state_changed_callback=volume_target_change_callback,
             starting_value=control_target
