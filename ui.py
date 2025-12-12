@@ -407,11 +407,7 @@ class ExtendableKeybindSetterList(QWidget):
 
 
 class ExponentialSlider(QSlider):
-
     slider_values = [1, 2, 3, 4, 5, 10, 20, 30, 40, 50]
-    smoothing_factor = 2.75
-    base = 1.03
-    offset = -2.7
 
     def __init__(self, minimum, maximum, interval):
         super().__init__(Qt.Orientation.Horizontal)
@@ -421,38 +417,46 @@ class ExponentialSlider(QSlider):
         self.max = maximum
         self.interval = interval
 
-    def lin_to_exp(self, value):
-        return self.smoothing_factor * math.pow(self.base, value) + self.offset
-
     def test(self, value):
-        print(f'Slider: {value} -> {self.lin_to_exp(value)} -> {round(self.lin_to_exp(value))}')
+        print(f'Slider: {value} -> {self.map_v2(value)}')
 
-    def should_print_tick_value(self, value):
-        for test_val in self.slider_values:
-            if math.fabs(value - test_val) < (value / 51):
-                return True
-        return False
+    def map_to_tick_value(self, value):
+        if value <= 50:
+            old_min = 0
+            old_max = 50
+            new_min = 1
+            new_max = 10
+        else:
+            old_min = 51
+            old_max = 99
+            new_min = 11
+            new_max = 50
+        mapped_value = (((value - old_min) * (new_max - new_min)) / (old_max - old_min)) + new_min
+        return mapped_value
+
+    def map_v2(self, value):
+        i = math.floor(value / 10)
+        print(i)
+        return self.slider_values[i]
+
     def paintEvent(self, ev, QPaintEvent=None):
         super().paintEvent(ev)
         painter = QPainter(self)
         painter.setPen(QPen(Qt.GlobalColor.white))
 
         rect: QRect = self.geometry()
-        num_ticks = 100
+        num_ticks = len(self.slider_values)
         font_metrics = QFontMetrics(self.font())
 
         font_height = font_metrics.height()
-        adjusted_width = rect.width() * 0.9
+        adjusted_width = rect.width() * 1.08
         x_offset = 10
-        for i in range(100):
-            next_tick_value = self.lin_to_exp(i)
-            if self.should_print_tick_value(next_tick_value):
-                tick_num = self.min + (self.interval * i)
-                tick_x = ((rect.width() / num_ticks) * i) - (font_metrics.boundingRect(str(tick_num)).width() / 2) + x_offset
-                tick_y = rect.height() - font_height * 2.5
-
-                painter.drawText(QPoint(int(tick_x), int(tick_y)), str(round(next_tick_value)))
-
+        y_offset_factor = 2.5
+        for i in range(math.ceil(num_ticks)):
+            tick_num = self.min + (self.interval * i)
+            tick_x = ((adjusted_width / num_ticks) * i) - (font_metrics.boundingRect(str(tick_num)).width() / 2) + x_offset
+            tick_y = rect.height() - (font_height * y_offset_factor)
+            painter.drawText(QPoint(int(tick_x), int(tick_y)), str(self.slider_values[i]))
         painter.drawRect(rect)
 
 
