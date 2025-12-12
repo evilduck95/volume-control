@@ -180,7 +180,7 @@ class VolumeBar(QWidget):
         self.label = OutlinedLabel("Volume Bar")
         self.label.set_brush(QBrush(QColor("white")))
         self.label.setStyleSheet("font-size: 20pt; font-family: Monaco;")
-        self.label.set_outline_thickness(2)
+        self.label.set_outline_thickness(3)
         layout.addWidget(self.label)
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setTextVisible(False)
@@ -204,14 +204,14 @@ class VolumeBar(QWidget):
 
     def set_error(self, text: str):
         self.label.set_brush(QBrush(QColor("lightcoral")))
-        self.label.setText(text)
+        self.label.setText(text.capitalize())
         # self.show() Requires a better keyboard event library
         self._stamp_update_time()
 
     def set_percentage(self, value: int, text: str = ''):
         self.show()
         self._reset_style()
-        self.label.setText(text)
+        self.label.setText(text.capitalize())
         self.progress_bar.setValue(value)
         self._stamp_update_time()
 
@@ -450,6 +450,7 @@ class ExponentialSlider(QSlider):
             painter.drawText(QPoint(int(tick_x), int(tick_y)), str(tick_num))
 
         painter.drawRect(rect)
+
 
 class VolumeTargetSelector(QWidget):
 

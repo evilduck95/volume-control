@@ -1,8 +1,11 @@
 import time
-from typing import Tuple, Any
 
 import psutil
 from xdo import Xdo
+
+from loggingutils import get_logger
+
+logger = get_logger(__file__)
 
 
 def get_active_window_info() -> tuple[int, str]:
@@ -33,8 +36,13 @@ def get_all_related_processes(proc: psutil.Process) -> tuple[psutil.Process, lis
     return parent, proc.children(recursive=True)
 
 
-def find_focused_app_process_ids():
+def find_focused_app_process_ids() -> tuple[psutil.Process, list[psutil.Process]]:
     active_pid, _name = get_active_window_info()
     focussed_proc = find_process_info(active_pid)
     parent, children = get_all_related_processes(focussed_proc)
-    return [parent.pid, *[child.pid for child in children]]
+    logger.debug(f'Process: [{focussed_proc.pid}:{focussed_proc.name()}] has {len(children)} children: {children}')
+    return parent, children
+
+
+time.sleep(2)
+find_focused_app_process_ids()

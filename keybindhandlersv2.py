@@ -128,7 +128,6 @@ class BindingGroup:
                   scroll: [Scroll | None] = None):
         for binding in self.bindings:
             if binding.is_active(keys, mouse_button, scroll):
-                print(f'Activated binding: {self.name}')
                 return True
 
 

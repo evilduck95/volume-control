@@ -1,3 +1,4 @@
+import logging
 import sys
 
 import yaml
@@ -13,6 +14,8 @@ import volumeutils
 from keybindhandlers import load_keybind_from_file, DEFAULT_UP_BINDING, DEFAULT_DOWN_BINDING
 
 config_filename = 'config.yml'
+
+logging.basicConfig(level=logging.INFO)
 
 
 def load_configs(filename: str):
@@ -74,7 +77,7 @@ initial_down_binding = DEFAULT_DOWN_BINDING if saved_down_binding is None else s
 def volume_change(delta: float):
     control_target = control_config['target']
     if control_target == 'current_application':
-        updated_volume, media_name = volumeutils.change_active_window_volume(delta)
+        updated_volume, media_name = volumeutils.change_active_window_volume_v2(delta)
     elif control_target == 'system':
         updated_volume, media_name = volumeutils.change_system_volume(delta)
     else:
