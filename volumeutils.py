@@ -1,8 +1,16 @@
+import psutil
 from pulsectl import pulsectl
 
 import windowutils
 
 last_controlled_media = ""
+
+
+class ProcessAudioReference:
+
+    def __init__(self, audio_sink_input: pulsectl.PulseSinkInputInfo, process: psutil.Process):
+        self.audio_sink_input = audio_sink_input
+        self.process = process
 
 
 def adjusted_volume_change(requested_change, current_volume) -> float:
@@ -19,6 +27,7 @@ def adjusted_volume_change(requested_change, current_volume) -> float:
     return actual_change
 
 
+# TODO: To handle multiple processes, we need to be able to scale the entire apps audio
 def change_sink_input_volume(pulse: pulsectl.Pulse,
                              sink_input: pulsectl.PulseSinkInputInfo,
                              requested_change: float) -> float:
@@ -31,6 +40,8 @@ def change_sink_input_volume(pulse: pulsectl.Pulse,
     # print('Changed volume of app by: ' + str(actual_change) + '. New Volume: ' + str(updated_volume))
     return updated_volume
 
+
+def gather_
 
 def change_active_window_volume(change: float) -> [float, str]:
     global last_controlled_media

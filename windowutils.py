@@ -1,7 +1,11 @@
+import time
+from typing import Tuple, Any
+
+import psutil
 from xdo import Xdo
 
 
-def get_active_window_info() -> int:
+def get_active_window_info() -> tuple[int, str]:
     xdo = Xdo()
     # Get the Process ID of the current focused window
     active_window = xdo.get_active_window()
@@ -13,3 +17,24 @@ def get_active_window_info() -> int:
     # TODO: Use psutil (or similar) to get child processes of active window
     #  Possibly might have to get parent first and then children
     return active_pid, window_name
+
+
+def find_process_info(active_pid: int) -> psutil.Process:
+    for proc in psutil.process_iter():
+        if proc.pid == active_pid:
+            return proc
+
+
+def get_all_related_processes(proc: psutil.Process) -> tuple[psutil.Process, list[psutil.Process]]:
+    parent = proc.parent()
+    # Get the parent only if it's there and is from the same program
+    if parent is None or parent.exe() != proc.exe():
+        parent = proc
+    return parent, proc.children(recursive=True)
+
+
+def find_focused_app_process_ids():
+    active_pid, _name = get_active_window_info()
+    focussed_proc = find_process_info(active_pid)
+    parent, children = get_all_related_processes(focussed_proc)
+    return [parent.pid, *[child.pid for child in children]]
