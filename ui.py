@@ -234,13 +234,9 @@ class VolumeTickSelector(QWidget):
         self.slider_value_label = QLabel()
         self.update_value(starting_value)
         layout.addRow(self.slider_value_label)
-
-        self.slider = ExponentialSlider()
+        self.slider = ExponentialSlider(starting_value)
         self.slider.setTickPosition(QSlider.TickPosition.TicksBelow)
-        # self.slider.setRange(1, 50)
         self.slider.setValue(starting_value)
-        # self.slider.setSingleStep(1)
-        # self.slider.setTickInterval(5)
         self.slider.wheelEvent = generalutils.noop_func
         # self.slider.setStyleSheet(SLIDER_STYLE_DEFAULT)
         self.slider.mapped_value_changed.connect(self.update_value)
@@ -279,6 +275,8 @@ class UserKeybindInputThread(QThread):
             saved_bindings = []
         else:
             saved_bindings = self.saved_bind.bindings
+        if binding in saved_bindings:
+            return saved_bindings.copy()
         if len(saved_bindings) <= self.bind_index:
             saved_bindings.append(binding)
         else:
@@ -299,7 +297,7 @@ class UserKeybindInputThread(QThread):
 
 class KeybindSetter(QWidget):
 
-    def __init__(self, bind_name: str, bind_index: int, after_set_callback: Callable):
+    def __init__(self, bind_name: str, bind_index: int, after_set_callback: Callable, after_remove_callback: Callable):
         super().__init__()
         self.bind_name = bind_name
         self.bind_index = bind_index
@@ -326,6 +324,7 @@ class KeybindSetter(QWidget):
         bottom_row.setSpacing(0)
         self.setLayout(layout)
         self.after_set_callback = after_set_callback
+        self.after_remove_callback = after_remove_callback
 
     def select(self):
         self.keybind_input.clicked.emit()
@@ -335,7 +334,7 @@ class KeybindSetter(QWidget):
         if saved_binding is not None and len(saved_binding.bindings) > self.bind_index:
             saved_binding.bindings.pop(self.bind_index)
             kb2.save_bind(saved_binding)
-        self.after_set_callback()
+        self.after_remove_callback()
         self.deleteLater()
         user_editing_signal.emit(False)
 
@@ -358,14 +357,14 @@ class ExtendableKeybindSetterList(QWidget):
         self.inputs = []
         self.after_set_callback = after_set_callback
         bound_action: kb2.BindingGroup = kb2.load_bind(bind_name)
-        num_of_bindings = 0 if bound_action is None else len(bound_action.bindings)
+        self.num_of_bindings = 0 if bound_action is None else len(bound_action.bindings)
         layout = QVBoxLayout()
         self.label = QLabel(label)
         self.label.setMargin(10)
         layout.addWidget(self.label)
-        for i in range(num_of_bindings):
+        for i in range(self.num_of_bindings):
             self.inputs.append(
-                KeybindSetter(bind_name, i, self._after_new_row_set)
+                KeybindSetter(bind_name, i, self._after_new_row_set, self._after_row_removed)
             )
         for widget in self.inputs:
             self._stacked_widget.addWidget(widget)
@@ -375,6 +374,8 @@ class ExtendableKeybindSetterList(QWidget):
         self.add_row_button.setMinimumHeight(30)
         self.add_row_button.setFixedWidth(245)
         self.add_row_button.clicked.connect(self._add_row)
+        if self.num_of_bindings >= 4:
+            self.add_row_button.hide()
         layout.addWidget(self.add_row_button, alignment=Qt.AlignmentFlag.AlignHCenter)
         layout.addStretch()
         self.setLayout(layout)
@@ -391,14 +392,20 @@ class ExtendableKeybindSetterList(QWidget):
 
     def _after_new_row_set(self):
         self.row_added = False
-        self.add_row_button.show()
+        self.num_of_bindings += 1
+        if self.num_of_bindings < 5:
+            self.add_row_button.show()
         self.after_set_callback()
+
+    def _after_row_removed(self):
+        self.add_row_button.show()
+        self.num_of_bindings -= 1
 
     def _add_row(self):
         global user_editing_signal
         self.row_added = True
         user_editing_signal.emit(True)
-        new_setter_row = KeybindSetter(self.bind_name, self._stacked_widget.count(), self._after_new_row_set)
+        new_setter_row = KeybindSetter(self.bind_name, self._stacked_widget.count(), self._after_new_row_set, self._after_row_removed)
         self._stacked_widget.addWidget(
             new_setter_row
         )
@@ -410,63 +417,54 @@ class ExponentialSlider(QSlider):
     mapped_value_changed = pyqtSignal(int)
     slider_values = [1, 2, 3, 4, 5, 10, 20, 30, 40, 50]
 
-    def __init__(self):
+    def __init__(self, initial_value):
         super().__init__(Qt.Orientation.Horizontal)
+        self.setValue(self.unmap_value(initial_value))
         self.setFixedHeight(50)
-        self.selected_value = 1
         self.valueChanged.connect(self.on_change)
-        self.sliderReleased.connect(self.on_release)
-        self.setSingleStep(20)
-        self.setTickInterval(20)
+        self.setMinimum(0)
+        self.setMaximum(9)
 
     def on_change(self, value):
-        self.selected_value = self.map_value(value)
-        print(f'{value} -> {self.selected_value}')
-        self.mapped_value_changed.emit(self.selected_value)
-
-    def on_release(self):
-        self.setValue(round(self.unmap_value(self.selected_value)))
-
-    def map_to_tick_value(self, value):
-        if value <= 50:
-            old_min = 0
-            old_max = 50
-            new_min = 1
-            new_max = 10
-        else:
-            old_min = 51
-            old_max = 99
-            new_min = 11
-            new_max = 50
-        mapped_value = (((value - old_min) * (new_max - new_min)) / (old_max - old_min)) + new_min
-        return mapped_value
-
-    def map_value(self, value):
-        i = math.floor(value / 10)
-        return self.slider_values[i]
+        self.mapped_value_changed.emit(self.slider_values[value])
 
     def unmap_value(self, mapped_value):
-        return self.slider_values.index(mapped_value) * 11.1
+        if mapped_value in self.slider_values:
+            return self.slider_values.index(mapped_value)
+        else:
+            return self.slider_values[0]
 
     def paintEvent(self, ev, QPaintEvent=None):
         super().paintEvent(ev)
         painter = QPainter(self)
-        painter.setPen(QPen(Qt.GlobalColor.white))
 
         rect: QRect = self.geometry()
         num_ticks = len(self.slider_values)
         font_metrics = QFontMetrics(self.font())
 
         font_height = font_metrics.height()
-        adjusted_width = rect.width() * 1.08
-        x_offset = 10
-        y_offset = 5
-        for i in range(math.ceil(num_ticks)):
-            tick_num = 0 + (2 * i)
-            tick_x = ((adjusted_width / num_ticks) * i) - (
-                        font_metrics.boundingRect(str(tick_num)).width() / 2) + x_offset
+        adjusted_width = rect.width() * 1.081
+        x_offset = 8
+        y_offset = 15
+        x_marker_offset = x_offset - 5
+        for i in range(num_ticks):
+            tick_num = i
+            slider_value = self.slider_values[i]
+            # Bigger numbers slide to the left a little plz
+            if len(str(slider_value)) > 1:
+                x_offset = 5
+                x_marker_offset = x_offset + 1
+
+            # Draw tick numbers
+            tick_x = (((adjusted_width / num_ticks) * i) -
+                      (font_metrics.boundingRect(str(tick_num)).width() / 2) + x_offset)
             tick_y = rect.height() - font_height + y_offset
-            painter.drawText(QPoint(int(tick_x), int(tick_y)), str(self.slider_values[i]))
+            painter.drawText(QPoint(int(tick_x), int(tick_y)), str(slider_value))
+
+            # Draw tick markers
+            line_start = QPoint(int(tick_x + x_marker_offset), int(tick_y - 15))
+            line_end = QPoint(int(tick_x + x_marker_offset), int(tick_y - 20))
+            painter.drawLine(line_start, line_end)
     # painter.drawRect(rect)
 
 
@@ -507,10 +505,14 @@ class KeyLogger(QWidget):
     def __init__(self):
         super().__init__()
         layout = QVBoxLayout()
+        self.label = QLabel('Key Tester')
+        self.label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        layout.addWidget(self.label)
         self.text_block = QPlainTextEdit()
         self.text_block.zoomIn(2)
         self.text_block.setMaximumBlockCount(20)
         self.text_block.setReadOnly(True)
+        self.text_block.setMaximumHeight(100)
         layout.addWidget(self.text_block)
         self.logging = False
         self.button = QPushButton('Start Log')
@@ -565,7 +567,7 @@ class OptionsWindow(QWidget):
         self.setWindowTitle('Options')
         self.setAutoFillBackground(False)
         self.setMinimumWidth(600)
-        self.setMinimumHeight(600)
+        # self.setMinimumHeight(600)
         root_layout = QVBoxLayout()
         self.volume_tick_selector = VolumeTickSelector(
             change_callback=volume_tick_change_callback,

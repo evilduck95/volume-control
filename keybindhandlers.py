@@ -91,6 +91,7 @@ class Binding:
         self.keys = keys
         self.key_codes: set[int] = set([key.code for key in keys])
         self.mouse_action: [SerializableMouseAction | None] = mouse_action
+        self.has_mouse_action: bool = mouse_action is not None
 
     def is_active(self,
                   keys_pressed: set[Key | KeyCode],
@@ -107,11 +108,17 @@ class Binding:
         if keys_only:
             return all_keys_are_pressed
         else:
-            if mouse_is_pressed:
-                mouse_action_done = mouse_button_pressed.value == self.mouse_action.button.code
+            if self.has_mouse_action:
+                if mouse_is_pressed:
+                    mouse_action_done = mouse_button_pressed.value == self.mouse_action.button.code
+                else:
+                    mouse_action_done = scroll is self.mouse_action.scroll
             else:
-                mouse_action_done = scroll is self.mouse_action.scroll
+                mouse_action_done = False
             return all_keys_are_pressed and mouse_action_done
+
+    def __eq__(self, other):
+        return self.__str__() == other.__str__()
 
     def __str__(self):
         key_names = [key.name for key in self.keys]
@@ -172,11 +179,15 @@ class KeybindCollector:
             self.modifiers_pressed.clear()
 
     def _mouse_clicked(self, _x, _y, button: Button, pressed):
+        if len(self.modifiers_pressed) == 0:
+            return
         if pressed and button not in [Button.left, Button.right]:
             self.terminal_mouse_action = button
             self.keybind_complete = True
 
     def _mouse_scrolled(self, _x, _y, _dx, dy):
+        if len(self.modifiers_pressed) == 0:
+            return
         if dy > 0:
             self.terminal_mouse_action = Scroll.UP
         else:
@@ -217,8 +228,13 @@ class KeybindListener:
         self.mouse_button_pressed: [Button | None] = None
         self.mouse_scroll: [Scroll | None] = None
 
+    def _start_mouse_listener(self):
+        self.mouse_listener = mouse.Listener(on_click=self._mouse_clicked, on_scroll=self._mouse_scrolled, suppress=True)
+        self.mouse_listener.start()
+
     def _key_pressed(self, key: [Key | KeyCode]):
         self.keys_pressed.add(key)
+        self._start_mouse_listener()
         # Only activate when the number of keys pressed changes (prevent key repetition)
         if self.keys_pressed != self.prev_keys_pressed:
             self.prev_keys_pressed = self.keys_pressed.copy()
@@ -249,10 +265,12 @@ class KeybindListener:
             logger.warning(f'Unknown key [{key}] released, cleared all keys')
             self.keys_pressed.clear()
         self.prev_keys_pressed = self.keys_pressed.copy()
+        if len(self.keys_pressed) == 0:
+            self.mouse_listener.stop()
 
     def start(self):
         self.key_listener.start()
-        self.mouse_listener.start()
+        # self.mouse_listener.start()
 
     def stop(self):
         self.key_listener.stop()

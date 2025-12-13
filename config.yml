@@ -3,4 +3,4 @@ control:
 ui:
   empty: none
 volume:
-  delta: 0.67
+  delta: 0.05
