@@ -243,7 +243,7 @@ class VolumeTickSelector(QWidget):
         # self.slider.setTickInterval(5)
         self.slider.wheelEvent = generalutils.noop_func
         # self.slider.setStyleSheet(SLIDER_STYLE_DEFAULT)
-        self.slider.valueChanged.connect(self.update_value)
+        self.slider.mapped_value_changed.connect(self.update_value)
         self.slider.sliderReleased.connect(lambda: change_callback(self.slider.value() / 100))
 
         layout.addRow(self.slider)
@@ -407,15 +407,25 @@ class ExtendableKeybindSetterList(QWidget):
 
 
 class ExponentialSlider(QSlider):
+    mapped_value_changed = pyqtSignal(int)
     slider_values = [1, 2, 3, 4, 5, 10, 20, 30, 40, 50]
 
     def __init__(self):
         super().__init__(Qt.Orientation.Horizontal)
         self.setFixedHeight(50)
-        self.valueChanged.connect(self.test)
+        self.selected_value = 1
+        self.valueChanged.connect(self.on_change)
+        self.sliderReleased.connect(self.on_release)
+        self.setSingleStep(20)
+        self.setTickInterval(20)
 
-    def test(self, value):
-        print(f'Slider: {value} -> {self.map_v2(value)}')
+    def on_change(self, value):
+        self.selected_value = self.map_value(value)
+        print(f'{value} -> {self.selected_value}')
+        self.mapped_value_changed.emit(self.selected_value)
+
+    def on_release(self):
+        self.setValue(round(self.unmap_value(self.selected_value)))
 
     def map_to_tick_value(self, value):
         if value <= 50:
@@ -431,9 +441,12 @@ class ExponentialSlider(QSlider):
         mapped_value = (((value - old_min) * (new_max - new_min)) / (old_max - old_min)) + new_min
         return mapped_value
 
-    def map_v2(self, value):
+    def map_value(self, value):
         i = math.floor(value / 10)
         return self.slider_values[i]
+
+    def unmap_value(self, mapped_value):
+        return self.slider_values.index(mapped_value) * 11.1
 
     def paintEvent(self, ev, QPaintEvent=None):
         super().paintEvent(ev)
@@ -450,7 +463,8 @@ class ExponentialSlider(QSlider):
         y_offset = 5
         for i in range(math.ceil(num_ticks)):
             tick_num = 0 + (2 * i)
-            tick_x = ((adjusted_width / num_ticks) * i) - (font_metrics.boundingRect(str(tick_num)).width() / 2) + x_offset
+            tick_x = ((adjusted_width / num_ticks) * i) - (
+                        font_metrics.boundingRect(str(tick_num)).width() / 2) + x_offset
             tick_y = rect.height() - font_height + y_offset
             painter.drawText(QPoint(int(tick_x), int(tick_y)), str(self.slider_values[i]))
     # painter.drawRect(rect)
