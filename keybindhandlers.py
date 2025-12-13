@@ -57,6 +57,7 @@ class SerializableKey:
     def __repr__(self):
         return self.__str__()
 
+
 @dataclass
 class SerializableMouseButton(SerializableKey):
 
@@ -221,20 +222,21 @@ class KeybindListener:
 
     def __init__(self, bound_actions: list[BoundAction]):
         self.bound_actions = bound_actions
-        self.key_listener = keyboard.Listener(on_press=self._key_pressed, on_release=self._key_released, suppress=False)
-        self.mouse_listener = mouse.Listener(on_click=self._mouse_clicked, on_scroll=self._mouse_scrolled)
+        self.key_listener = keyboard.Listener(
+            on_press=self._key_pressed,
+            on_release=self._key_released,
+            suppress=False)
+        self.mouse_listener = mouse.Listener(
+            on_click=self._mouse_clicked,
+            on_scroll=self._mouse_scrolled,
+            suppress=False)
         self.keys_pressed = set()
         self.prev_keys_pressed = set()
         self.mouse_button_pressed: [Button | None] = None
         self.mouse_scroll: [Scroll | None] = None
 
-    def _start_mouse_listener(self):
-        self.mouse_listener = mouse.Listener(on_click=self._mouse_clicked, on_scroll=self._mouse_scrolled, suppress=True)
-        self.mouse_listener.start()
-
     def _key_pressed(self, key: [Key | KeyCode]):
         self.keys_pressed.add(key)
-        self._start_mouse_listener()
         # Only activate when the number of keys pressed changes (prevent key repetition)
         if self.keys_pressed != self.prev_keys_pressed:
             self.prev_keys_pressed = self.keys_pressed.copy()
@@ -265,12 +267,10 @@ class KeybindListener:
             logger.warning(f'Unknown key [{key}] released, cleared all keys')
             self.keys_pressed.clear()
         self.prev_keys_pressed = self.keys_pressed.copy()
-        if len(self.keys_pressed) == 0:
-            self.mouse_listener.stop()
 
     def start(self):
         self.key_listener.start()
-        # self.mouse_listener.start()
+        self.mouse_listener.start()
 
     def stop(self):
         self.key_listener.stop()
