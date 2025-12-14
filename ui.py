@@ -465,7 +465,6 @@ class ExponentialSlider(QSlider):
             line_start = QPoint(int(tick_x + x_marker_offset), int(tick_y - 15))
             line_end = QPoint(int(tick_x + x_marker_offset), int(tick_y - 20))
             painter.drawLine(line_start, line_end)
-    # painter.drawRect(rect)
 
 
 class VolumeTargetSelector(QWidget):
@@ -544,6 +543,22 @@ class KeyLogger(QWidget):
     def _release_key(self, key: [Key | KeyCode]):
         self.text_block.appendPlainText(self._key_as_log(key, False))
 
+
+class Status(QWidget):
+    update_key_listening_status = pyqtSignal(bool)
+
+    def __init__(self):
+        layout = QHBoxLayout()
+        self.key_listening_status_id = QLabel('Keybind Listener: ')
+        self.key_listening_status = QLabel()
+        layout.addWidget(self.key_listening_status)
+
+    def update_status(self, listening: bool):
+        # TODO: Use Stylesheet to control color
+        if listening:
+            self.key_listening_status.setText('Active')
+        else:
+            self.key_listening_status.setText('Inactive')
 
 class Line(QFrame):
 
